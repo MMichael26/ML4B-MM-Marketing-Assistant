@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 # =========================
 # Page config
 # =========================
-st.set_page_config(page_title="Market Research Assistant", layout="wide")
+st.set_page_config(page_title="The Best Market Research Assistant", layout="wide")
 
 # =========================
 # Blue accent styling (light + consistent)
@@ -40,8 +40,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("Market Research Assistant (Wikipedia-grounded)")
-st.caption("Designed for a business analyst: quick industry briefing grounded in retrieved Wikipedia sources.")
+st.title("The Best Market Research Assistant")
+st.caption("Designed to provide you with quick industry briefings.")
 
 # =========================
 # Local Development (VS Code) instructions
@@ -135,7 +135,7 @@ os.environ["OPENAI_API_KEY"] = api_key
 # =========================
 # UI — Q1
 # =========================
-st.markdown("<h3 class='blue-accent'>Q1 — Step 1: Provide an industry</h3>", unsafe_allow_html=True)
+st.markdown("<h3 class='blue-accent'>Provide an industry</h3>", unsafe_allow_html=True)
 st.markdown(
     "<div class='subtle'>The assistant checks an industry is provided. If not, it requests an update.</div>",
     unsafe_allow_html=True
@@ -154,7 +154,7 @@ if st.button("Run"):
     # =========================
     # Q2 — URLs of five most relevant Wikipedia pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Q2 — Step 2: Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'> Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>The assistant retrieves Wikipedia pages and returns the URLs for the five most relevant.</div>",
         unsafe_allow_html=True
@@ -176,7 +176,7 @@ if st.button("Run"):
     # =========================
     # Q3 — Industry report (<500 words), based on those five pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Q3 — Step 3: Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'> Your Requested Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
         unsafe_allow_html=True
