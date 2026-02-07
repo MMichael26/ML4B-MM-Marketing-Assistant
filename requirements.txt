@@ -5,3 +5,9 @@ langchain-openai
 wikipedia
 openai
 python-dotenv
+requests
+pandas
+numpy
+altair
+scikit-learn
+
