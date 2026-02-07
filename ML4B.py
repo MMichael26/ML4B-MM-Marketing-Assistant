@@ -69,9 +69,11 @@ def industry_is_valid(industry: str) -> bool:
 
 def retrieve_wikipedia_docs(industry: str, k: int = 5):
     retriever = WikipediaRetriever(top_k_results=k, lang="en")
-    docs = retriever.get_relevant_documents(industry)
+    try:
+        docs = retriever.get_relevant_documents(industry)
+    except AttributeError:
+        docs = retriever.invoke(industry)
     return docs[:k]
-
 
 def extract_urls(docs):
     urls = []
