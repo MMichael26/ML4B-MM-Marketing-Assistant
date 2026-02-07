@@ -1,7 +1,6 @@
 import os
 import re
 import io
-import numpy as np
 import pandas as pd
 import streamlit as st
 import requests
@@ -19,7 +18,7 @@ from langchain_openai import ChatOpenAI
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
 # =========================
-# Blue accent styling (light + consistent)
+# Styling
 # =========================
 st.markdown(
     """
@@ -54,11 +53,10 @@ st.markdown(
 )
 
 st.title("Market Research Assistant")
-st.caption("Here to provide you with concise industry research")
-
+st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key input (masked + show toggle)
+# Sidebar: API Key input
 # =========================
 st.sidebar.header("API Key")
 st.sidebar.write("Enter your OpenAI API key to run the report.")
@@ -74,9 +72,16 @@ user_key = st.sidebar.text_input(
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
+# =========================
+# Sidebar: CSV + External API keys
+# =========================
 st.sidebar.header("Data (CSV optional)")
 uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
 k_clusters = st.sidebar.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
+
+st.sidebar.header("External data (optional keys)")
+fred_api_key = st.sidebar.text_input("FRED API Key (optional)", type="password")
+comtrade_token = st.sidebar.text_input("UN Comtrade Token (optional)", type="password")
 
 # =========================
 # Helper functions
@@ -101,7 +106,6 @@ def extract_urls(docs):
         if src:
             urls.append(src)
 
-    # De-duplicate while preserving order
     seen = set()
     unique = []
     for u in urls:
@@ -113,18 +117,13 @@ def extract_urls(docs):
 
 
 def build_sources_text(docs) -> str:
-    """
-    Build context ONLY from the retrieved Wikipedia pages.
-    We number sources so the model can cite like [Source 1].
-    """
     parts = []
     for i, d in enumerate(docs, start=1):
         title = (d.metadata or {}).get("title", f"Source {i}")
         url = (d.metadata or {}).get("source", "")
         text = (d.page_content or "").strip()
         text = re.sub(r"\s+", " ", text)
-        text = text[:2600]  # bounded context per source
-
+        text = text[:2600]
         parts.append(
             f"[Source {i}]\n"
             f"TITLE: {title}\n"
@@ -141,61 +140,86 @@ def cap_500_words(text: str) -> str:
     return " ".join(words[:500]).rstrip() + "…"
 
 
-# =========================
-# Clustering helpers
-# =========================
-def make_synthetic_dataset(industry: str, n: int = 120) -> pd.DataFrame:
-    seed = abs(hash(industry)) % (2**32)
-    rng = np.random.default_rng(seed)
-    data = {
-        "company": [f"{industry.title()} Co {i+1}" for i in range(n)],
-        "revenue_growth": rng.normal(8, 5, n).clip(-10, 30),
-        "ebitda_margin": rng.normal(18, 7, n).clip(0, 45),
-        "market_share": rng.normal(3, 2, n).clip(0.1, 15),
-        "debt_to_equity": rng.normal(1.2, 0.7, n).clip(0, 5),
-        "capex_intensity": rng.normal(6, 3, n).clip(0.5, 18),
-    }
-    return pd.DataFrame(data)
-
-
 def prepare_for_kmeans(df: pd.DataFrame):
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.shape[1] < 2:
         return None, None
-    # z-score scaling
     scaled = (numeric_df - numeric_df.mean()) / (numeric_df.std(ddof=0) + 1e-9)
     return numeric_df, scaled
 
 
 # =========================
-# Report analysis helpers
+# External data helpers (free sources)
 # =========================
-def split_report_sections(report_text: str):
-    sections = []
-    current_title = "Report"
-    current_lines = []
-    for line in report_text.splitlines():
-        if re.match(r"^\s*\d+\)\s+", line):
-            if current_lines:
-                sections.append((current_title, "\n".join(current_lines).strip()))
-            current_title = re.sub(r"^\s*\d+\)\s+", "", line).strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-    if current_lines:
-        sections.append((current_title, "\n".join(current_lines).strip()))
-    return sections
+def worldbank_latest_indicator(iso2: str, indicator: str):
+    url = f"https://api.worldbank.org/v2/country/{iso2}/indicator/{indicator}"
+    try:
+        r = requests.get(url, params={"format": "json", "per_page": 60}, timeout=12)
+        data = r.json()
+        if not isinstance(data, list) or len(data) < 2:
+            return None
+        for row in data[1]:
+            if row.get("value") is not None:
+                return {"year": row.get("date"), "value": row.get("value")}
+    except Exception:
+        return None
+    return None
 
 
-def section_confidence_score(section_text: str):
-    # Heuristic: combine length and citation density
-    words = section_text.split()
-    word_count = max(1, len(words))
-    citations = len(re.findall(r"\[Source\s+\d+\]", section_text))
-    citation_density = min(1.0, citations / max(1, word_count / 60))
-    length_score = min(1.0, word_count / 120)
-    score = int((0.6 * citation_density + 0.4 * length_score) * 100)
-    return max(10, min(100, score))
+def oecd_latest_series(dataset: str, series_key: str):
+    url = f"https://stats.oecd.org/SDMX-JSON/data/{dataset}/{series_key}.json"
+    try:
+        r = requests.get(url, timeout=12)
+        data = r.json()
+        obs = data["dataSets"][0]["observations"]
+        if not obs:
+            return None
+        latest_key = max(obs.keys(), key=lambda k: int(k.split(":")[-1]))
+        latest_val = obs[latest_key][0]
+        return latest_val
+    except Exception:
+        return None
+
+
+def fred_latest(series_id: str, api_key: str):
+    if not api_key:
+        return None
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    try:
+        r = requests.get(
+            url,
+            params={"series_id": series_id, "api_key": api_key, "file_type": "json"},
+            timeout=12,
+        )
+        data = r.json()
+        obs = [o for o in data.get("observations", []) if o.get("value") not in (".", None)]
+        if not obs:
+            return None
+        latest = obs[-1]
+        return {"date": latest["date"], "value": float(latest["value"])}
+    except Exception:
+        return None
+
+
+def comtrade_latest(token: str, reporter: str = "840", commodity: str = "TOTAL"):
+    if not token:
+        return None
+    url = "https://comtradeapi.worldbank.org/v1/get/HS"
+    params = {
+        "reporterCode": reporter,
+        "year": "2022",
+        "cmdCode": commodity,
+        "flowCode": "M",
+        "token": token,
+    }
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        data = r.json()
+        if "data" in data and data["data"]:
+            return data["data"][0]
+    except Exception:
+        return None
+    return None
 
 
 # =========================
@@ -224,7 +248,7 @@ os.environ["OPENAI_API_KEY"] = api_key
 
 
 # =========================
-# UI — Q1
+# UI — Step 1
 # =========================
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
@@ -240,7 +264,6 @@ with st.form("industry_form"):
     submitted = st.form_submit_button("Generate report")
 
 if submitted:
-    # Q1 validation
     if not industry_is_valid(industry):
         st.warning("Please enter an industry to continue.")
         st.stop()
@@ -248,7 +271,7 @@ if submitted:
     st.success("Industry received. Fetching Wikipedia sources...")
 
     # =========================
-    # Q2 — URLs of five most relevant Wikipedia pages
+    # Step 2 — Wikipedia sources
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -278,22 +301,18 @@ if submitted:
             if rank >= 5:
                 break
 
-    st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
-
     # =========================
-    # Q3 — Industry report (<500 words), based on those five pages
+    # Step 3 — Industry report
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
+        "<div class='subtle'>Business-analyst style briefing with citations [Source #].</div>",
         unsafe_allow_html=True
     )
 
     sources_text = build_sources_text(docs)
-
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
-    # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
         "The analyst is evaluating a potential acquisition target in this industry.\n"
@@ -333,17 +352,6 @@ if submitted:
     report = re.sub(r"(?m)^#+\s*", "", report)
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
 
-    word_count = len(report.split())
-    st.caption(f"Word count: {word_count} / 500")
-
-    # Source coverage signal (for methodology / quality)
-    source_lengths = [len((d.page_content or "").strip()) for d in docs]
-    avg_len = int(sum(source_lengths) / max(1, len(source_lengths)))
-    coverage_score = min(
-        100,
-        int((len(docs) / 5) * 40 + (min(sum(source_lengths), 9000) / 9000) * 60),
-    )
-
     st.markdown(
         f"""
         <div class="report-box">
@@ -354,171 +362,69 @@ if submitted:
     )
 
     # =========================
-    # Confidence scoring by section
+    # Visuals — real external sources only
     # =========================
-    st.markdown("<h3 class='blue-accent'>Section Confidence Scores</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Heuristic confidence based on section length and citation density.</div>",
-        unsafe_allow_html=True
-    )
-    sections = split_report_sections(report)
-    if sections:
-        conf_rows = []
-        for title, text in sections:
-            conf_rows.append(
-                {
-                    "Section": title,
-                    "Confidence": section_confidence_score(text),
-                    "Citations": len(re.findall(r"\[Source\s+\d+\]", text)),
-                }
-            )
-        conf_df = pd.DataFrame(conf_rows)
-        conf_chart = (
-            alt.Chart(conf_df)
-            .mark_bar()
-            .encode(
-                x=alt.X("Section:N", sort=None, title="Section"),
-                y=alt.Y("Confidence:Q", title="Confidence (0–100)"),
-                color=alt.Color("Confidence:Q", scale=alt.Scale(scheme="blues")),
-                tooltip=["Section", "Confidence", "Citations"],
-            )
+    st.markdown("<h3 class='blue-accent'>Industry visuals (external real-world data)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'>Sources: World Bank, OECD, UN Comtrade, FRED.</div>", unsafe_allow_html=True)
+
+    wb_gdp = worldbank_latest_indicator("USA", "NY.GDP.MKTP.CD")
+    wb_ind = worldbank_latest_indicator("USA", "NV.IND.MANF.ZS")
+    if wb_gdp and wb_ind:
+        st.markdown("<div class='blue-accent'>US Macro Context (World Bank)</div>", unsafe_allow_html=True)
+        st.bar_chart(
+            {"Metric": ["GDP (US$)", "Manufacturing % of GDP"], "Value": [wb_gdp["value"], wb_ind["value"]]},
+            x="Metric",
+            y="Value",
         )
-        st.altair_chart(conf_chart, use_container_width=True)
-    else:
-        st.caption("Could not detect section headings for confidence scoring.")
+
+    oecd_val = oecd_latest_series("SNA_TABLE2", "USA.A")
+    if oecd_val is not None:
+        st.markdown("<div class='blue-accent'>OECD Indicator (Sample)</div>", unsafe_allow_html=True)
+        st.write(f"Latest OECD value (sample series): {oecd_val}")
+
+    comtrade = comtrade_latest(comtrade_token)
+    if comtrade:
+        st.markdown("<div class='blue-accent'>UN Comtrade Sample (Imports)</div>", unsafe_allow_html=True)
+        st.write(comtrade)
+
+    fred = fred_latest("INDPRO", fred_api_key)
+    if fred:
+        st.markdown("<div class='blue-accent'>FRED Industrial Production Index</div>", unsafe_allow_html=True)
+        st.line_chart({"Date": [fred["date"]], "Index": [fred["value"]]}, x="Date", y="Index")
 
     # =========================
-    # Clustering — CSV or synthetic (K-means)
+    # Clustering — only if CSV uploaded
     # =========================
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Upload a CSV in the sidebar or use the synthetic dataset generated from the industry name.</div>",
-        unsafe_allow_html=True
-    )
-
-    if uploaded_csv is not None:
+    if uploaded_csv is None:
+        st.info("Upload a CSV to enable clustering.")
+    else:
         try:
             raw = uploaded_csv.getvalue().decode("utf-8")
             df = pd.read_csv(io.StringIO(raw))
-            used_synthetic = False
         except Exception:
             st.warning("Could not read the CSV. Please upload a valid CSV file.")
             df = None
-            used_synthetic = False
-    else:
-        df = make_synthetic_dataset(industry.strip())
-        used_synthetic = True
 
-    if df is not None:
-        numeric_df, scaled = prepare_for_kmeans(df)
-        if numeric_df is None:
-            st.warning("CSV needs at least two numeric columns for clustering.")
-        else:
-            km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
-            clusters = km.fit_predict(scaled)
-            df_plot = numeric_df.copy()
-            df_plot["cluster"] = clusters.astype(str)
+        if df is not None:
+            numeric_df, scaled = prepare_for_kmeans(df)
+            if numeric_df is None:
+                st.warning("CSV needs at least two numeric columns for clustering.")
+            else:
+                km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+                clusters = km.fit_predict(scaled)
+                df_plot = numeric_df.copy()
+                df_plot["cluster"] = clusters.astype(str)
 
-            # Pick first two numeric columns for a 2D view
-            x_col, y_col = numeric_df.columns[:2]
-            chart = (
-                alt.Chart(df_plot)
-                .mark_circle(size=70, opacity=0.8)
-                .encode(
-                    x=alt.X(x_col, title=x_col),
-                    y=alt.Y(y_col, title=y_col),
-                    color=alt.Color("cluster:N", title="Cluster"),
-                    tooltip=[x_col, y_col, "cluster"],
+                x_col, y_col = numeric_df.columns[:2]
+                chart = (
+                    alt.Chart(df_plot)
+                    .mark_circle(size=70, opacity=0.8)
+                    .encode(
+                        x=alt.X(x_col, title=x_col),
+                        y=alt.Y(y_col, title=y_col),
+                        color=alt.Color("cluster:N", title="Cluster"),
+                        tooltip=[x_col, y_col, "cluster"],
+                    )
                 )
-            )
-            st.altair_chart(chart, use_container_width=True)
-
-            st.caption("Clusters are based on numeric columns only. Non-numeric columns are ignored.")
-
-    # =========================
-    # Methodology & Critical Evaluation
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Methodology & Critical Evaluation</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>This section documents assumptions, limitations, and hypotheses to test.</div>",
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        f"""
-        <div class="report-box">
-        <b>Source coverage score:</b> {coverage_score}/100<br>
-        <b>Sources used:</b> {len(docs)}<br>
-        <b>Average source excerpt length:</b> {avg_len} characters<br>
-        <b>Clustering dataset:</b> {'User CSV' if not used_synthetic else 'Synthetic (industry-seeded)'}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown("**Critical evaluation of methods**")
-    st.write(
-        "1. The report is grounded only in Wikipedia sources, which can bias toward general definitions and public summaries. "
-        "This improves explainability but may omit recent market dynamics or private company details."
-    )
-    st.write(
-        "2. External visuals rely on Wikidata and World Bank. Coverage varies by industry and region, "
-        "so company lists may be incomplete or skewed toward well-documented firms."
-    )
-    st.write(
-        "3. Clustering uses only numeric columns. If the CSV lacks normalized metrics or comparable definitions, "
-        "cluster boundaries may reflect data quality rather than true segment structure."
-    )
-
-    st.markdown("**Methodology improvements / new insights**")
-    st.write(
-        "1. Introduce a source-quality weighting (e.g., prioritize sector-specific pages and reduce general pages) "
-        "to improve relevance for acquisition analysis."
-    )
-    st.write(
-        "2. Add a temporal freshness check by comparing last-modified dates of sources to flag stale inputs."
-    )
-    st.write(
-        "3. Incorporate structured financial comparables from open filings or public registries where available."
-    )
-
-    st.markdown("**Hypotheses to test next**")
-    st.write(
-        "1. Leading firms in this industry disproportionately cluster in a small number of HQ countries, "
-        "implying geographic concentration risk."
-    )
-    st.write(
-        "2. Companies with higher capex intensity and margins form a distinct strategic cluster suitable for acquisition."
-    )
-    st.write(
-        "3. The industry’s value chain is consolidating, indicated by a rising share of large, highly visible firms."
-    )
-
-    # =========================
-    # Source bias heatmap
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Source Bias Heatmap</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Shows which sources are most cited across report sections.</div>",
-        unsafe_allow_html=True
-    )
-    if sections:
-        heat_rows = []
-        for title, text in sections:
-            for i in range(1, len(docs) + 1):
-                count = len(re.findall(rf"\[Source\s+{i}\]", text))
-                heat_rows.append({"Section": title, "Source": f"Source {i}", "Count": count})
-        heat_df = pd.DataFrame(heat_rows)
-        heat_chart = (
-            alt.Chart(heat_df)
-            .mark_rect()
-            .encode(
-                x=alt.X("Source:N", title="Source"),
-                y=alt.Y("Section:N", title="Section"),
-                color=alt.Color("Count:Q", scale=alt.Scale(scheme="blues"), title="Citations"),
-                tooltip=["Section", "Source", "Count"],
-            )
-        )
-        st.altair_chart(heat_chart, use_container_width=True)
-    else:
-        st.caption("No sections detected to build heatmap.")
+                st.altair_chart(chart, use_container_width=True)
