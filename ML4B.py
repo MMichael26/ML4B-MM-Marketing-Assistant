@@ -41,13 +41,22 @@ st.markdown(
 )
 
 st.title("Market Research Assistant")
-st.caption("Designed for a quick industry briefing g.")
+st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
+
+# =========================
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
 
 # =========================
 # Sidebar: API Key input (masked + show toggle)
 # =========================
 st.sidebar.header("API Key")
-st.sidebar.write("Enter your OpenAI API key to use this app.")
+st.sidebar.write("Enter your OpenAI API key to run the report.")
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
@@ -57,8 +66,8 @@ user_key = st.sidebar.text_input(
 # =========================
 # Sidebar: Model settings
 # =========================
-st.sidebar.header("Model Settings")
-temperature = st.sidebar.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
+with st.sidebar.expander("Advanced settings", expanded=False):
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
 # Helper functions
@@ -74,6 +83,7 @@ def retrieve_wikipedia_docs(industry: str, k: int = 5):
     except AttributeError:
         docs = retriever.invoke(industry)
     return docs[:k]
+
 
 def extract_urls(docs):
     urls = []
@@ -135,28 +145,33 @@ os.environ["OPENAI_API_KEY"] = api_key
 # =========================
 # UI — Q1
 # =========================
-st.markdown("<h3 class='blue-accent'>Provide an industry</h3>", unsafe_allow_html=True)
+st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='subtle'>The assistant checks an industry is provided. If not, it requests an update.</div>",
+    "<div class='subtle'>Tip: be specific (e.g., “Fast fashion”, “Semiconductor industry”, “EV batteries”).</div>",
     unsafe_allow_html=True
 )
 
-industry = st.text_input("Industry (e.g., Fast fashion, Semiconductor industry)")
+with st.form("industry_form"):
+    industry = st.text_input(
+        "Industry",
+        placeholder="Try: Fast fashion",
+    )
+    submitted = st.form_submit_button("Generate report")
 
-if st.button("Run"):
+if submitted:
     # Q1 validation
     if not industry_is_valid(industry):
-        st.warning("Please provide an industry to continue.")
+        st.warning("Please enter an industry to continue.")
         st.stop()
 
-    st.success("Industry received. Proceeding to Wikipedia retrieval (Q2).")
+    st.success("Industry received. Fetching Wikipedia sources...")
 
     # =========================
     # Q2 — URLs of five most relevant Wikipedia pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>The assistant retrieves Wikipedia pages and returns the URLs for the five most relevant.</div>",
+        "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
         unsafe_allow_html=True
     )
 
@@ -168,15 +183,16 @@ if st.button("Run"):
         st.error("No Wikipedia pages found. Try a more specific industry term.")
         st.stop()
 
-    for u in urls:
-        st.write(u)
+    with st.expander("Show sources", expanded=True):
+        for u in urls:
+            st.write(u)
 
-    st.info("The report in Q3 is generated exclusively from the five Wikipedia pages listed above.")
+    st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
     # Q3 — Industry report (<500 words), based on those five pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
         unsafe_allow_html=True
