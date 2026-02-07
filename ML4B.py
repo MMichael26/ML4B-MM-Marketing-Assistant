@@ -1,5 +1,7 @@
 import os
 import re
+import hashlib
+import random
 from collections import Counter
 import streamlit as st
 import openai
@@ -256,17 +258,59 @@ if submitted:
         )
 
     with tab_visuals:
-        st.markdown("<div class='subtle'>Visuals derived from the Wikipedia source excerpts.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='subtle'>Visuals are generated to support analysis.</div>", unsafe_allow_html=True)
 
-        # Visual 1: Source coverage by excerpt length
-        titles = [(d.metadata or {}).get("title", f"Source {i+1}") for i, d in enumerate(docs)]
-        lengths = [len((d.page_content or "")) for d in docs]
-        st.markdown("<div class='blue-accent'>Source Coverage (Excerpt Length)</div>", unsafe_allow_html=True)
-        st.bar_chart({"Source": titles, "Excerpt length": lengths}, x="Source", y="Excerpt length")
+        # Attempt to extract real numeric signals from sources
+        source_text = " ".join((d.page_content or "") for d in docs)
 
-        # Visual 2: Top terms across sources
-        all_text = " ".join((d.page_content or "") for d in docs)
-        tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", all_text.lower())
+        years = re.findall(r"\b(19\d{2}|20\d{2})\b", source_text)
+        years_count = Counter(years)
+
+        percents = re.findall(r"\b\d{1,3}\s*%\b", source_text)
+        numbers = re.findall(r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b", source_text)
+        numeric_count = len(percents) + len(numbers)
+
+        if len(years_count) >= 4 or numeric_count >= 6:
+            st.info("These charts are derived from numeric signals found in the Wikipedia sources.")
+
+            # Chart 1: Mentions by year
+            if years_count:
+                years_sorted = sorted(years_count.items(), key=lambda x: x[0])
+                st.markdown("<div class='blue-accent'>Timeline Mentions (Years)</div>", unsafe_allow_html=True)
+                st.line_chart({"Year": [y[0] for y in years_sorted], "Mentions": [y[1] for y in years_sorted]}, x="Year", y="Mentions")
+
+            # Chart 2: Percent mentions count
+            if percents:
+                st.markdown("<div class='blue-accent'>Percent Values Referenced</div>", unsafe_allow_html=True)
+                pct_values = [int(re.sub(r"[^0-9]", "", p)) for p in percents[:12]]
+                st.bar_chart({"Percent": list(range(1, len(pct_values) + 1)), "Value": pct_values}, x="Percent", y="Value")
+        else:
+            st.info("These charts are synthetic/illustrative (not real market metrics).")
+
+            seed = int(hashlib.md5(industry.strip().encode("utf-8")).hexdigest(), 16)
+            rng = random.Random(seed)
+
+            # Segment attractiveness
+            segments = ["Manufacturing", "Distribution", "Retail", "Digital Channels", "Logistics", "Services"]
+            attractiveness = [rng.randint(35, 85) for _ in segments]
+            st.markdown("<div class='blue-accent'>Segment Attractiveness (Synthetic)</div>", unsafe_allow_html=True)
+            st.bar_chart({"Segment": segments, "Attractiveness Score": attractiveness}, x="Segment", y="Attractiveness Score")
+
+            # Value chain emphasis
+            values = [rng.randint(10, 35) for _ in segments]
+            st.markdown("<div class='blue-accent'>Indicative Value Chain Emphasis (Synthetic)</div>", unsafe_allow_html=True)
+            st.bar_chart({"Segment": segments, "Score": values}, x="Segment", y="Score")
+
+            # Demand index
+            years = [2019, 2020, 2021, 2022, 2023, 2024]
+            index = [100]
+            for _ in years[1:]:
+                index.append(index[-1] + rng.randint(-8, 14))
+            st.markdown("<div class='blue-accent'>Illustrative Demand Index (Synthetic)</div>", unsafe_allow_html=True)
+            st.line_chart({"Year": years, "Index": index}, x="Year", y="Index")
+
+        # Always show a source-derived term chart
+        tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", source_text.lower())
         stop = {
             "the","and","for","with","that","this","from","are","was","were","has","have",
             "had","its","their","which","into","also","such","than","over","under","between",
@@ -278,18 +322,8 @@ if submitted:
         if top_terms:
             terms = [t[0].title() for t in top_terms]
             values = [t[1] for t in top_terms]
-            st.markdown("<div class='blue-accent'>Top Topics Mentioned</div>", unsafe_allow_html=True)
+            st.markdown("<div class='blue-accent'>Top Topics Mentioned (Source-Derived)</div>", unsafe_allow_html=True)
             st.bar_chart({"Topic": terms, "Mentions": values}, x="Topic", y="Mentions")
-        else:
-            st.caption("Not enough text to extract key topics.")
-
-        # Visual 3: Relative coverage index (derived from sources)
-        if lengths:
-            total = sum(lengths)
-            share = [round((l / total) * 100, 2) if total else 0 for l in lengths]
-            st.markdown("<div class='blue-accent'>Relative Coverage Index (Derived)</div>", unsafe_allow_html=True)
-            st.area_chart({"Source": titles, "Coverage %": share}, x="Source", y="Coverage %")
-            st.caption("Derived from excerpt lengths to show relative coverage per source.")
 
     with tab_sources:
         for u in urls:
