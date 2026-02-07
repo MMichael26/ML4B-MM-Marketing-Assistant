@@ -45,6 +45,7 @@ st.caption("Generate a concise, Wikipedia-grounded industry briefing in three st
 # =========================
 st.sidebar.header("API Key")
 st.sidebar.write("Enter your OpenAI API key to run the report.")
+st.sidebar.caption("Leave blank to use the default key (if configured).")
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
@@ -55,17 +56,13 @@ with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
-# API key handling
+# API key handling (default + allow override)
 # =========================
-ALLOWED_KEY = st.secrets.get("ALLOWED_API_KEY", "").strip()
+DEFAULT_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "")).strip()
+api_key = (user_key or "").strip() or DEFAULT_KEY
 
-api_key = (user_key or "").strip()
 if not api_key:
     st.info("Please enter your OpenAI API key in the sidebar to continue.")
-    st.stop()
-
-if ALLOWED_KEY and api_key != ALLOWED_KEY:
-    st.info("This app is restricted to the authorized API key.")
     st.stop()
 
 os.environ["OPENAI_API_KEY"] = api_key
