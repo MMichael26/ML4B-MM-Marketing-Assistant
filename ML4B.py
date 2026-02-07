@@ -1,9 +1,9 @@
 import os
 import re
-import hashlib
-import random
 from collections import Counter
 import streamlit as st
+import requests
+import pandas as pd
 import openai
 
 from langchain_community.retrievers import WikipediaRetriever
@@ -92,6 +92,134 @@ os.environ["OPENAI_API_KEY"] = api_key
 
 
 # =========================
+# Helper functions (Wikipedia for report only)
+# =========================
+def industry_is_valid(industry: str) -> bool:
+    return bool(industry and industry.strip())
+
+
+def retrieve_wikipedia_docs(industry: str, k: int = 5):
+    retriever = WikipediaRetriever(top_k_results=k, lang="en")
+    try:
+        docs = retriever.get_relevant_documents(industry)
+    except AttributeError:
+        docs = retriever.invoke(industry)
+    return docs[:k]
+
+
+def extract_urls(docs):
+    urls = []
+    for d in docs:
+        src = (d.metadata or {}).get("source", "")
+        if src:
+            urls.append(src)
+
+    seen = set()
+    unique = []
+    for u in urls:
+        if u not in seen:
+            unique.append(u)
+            seen.add(u)
+
+    return unique[:5]
+
+
+def build_sources_text(docs) -> str:
+    parts = []
+    for i, d in enumerate(docs, start=1):
+        title = (d.metadata or {}).get("title", f"Source {i}")
+        url = (d.metadata or {}).get("source", "")
+        text = (d.page_content or "").strip()
+        text = re.sub(r"\s+", " ", text)
+        text = text[:2600]
+        parts.append(
+            f"[Source {i}]\n"
+            f"TITLE: {title}\n"
+            f"URL: {url}\n"
+            f"CONTENT EXCERPT: {text}\n"
+        )
+    return "\n\n".join(parts)
+
+
+def cap_500_words(text: str) -> str:
+    words = (text or "").split()
+    if len(words) <= 500:
+        return text.strip()
+    return " ".join(words[:500]).rstrip() + "…"
+
+
+# =========================
+# External data helpers (for visuals only)
+# =========================
+def wikidata_find_industry_qid(industry_label: str) -> str:
+    url = "https://www.wikidata.org/w/api.php"
+    params = {
+        "action": "wbsearchentities",
+        "search": industry_label,
+        "language": "en",
+        "format": "json",
+        "limit": 1
+    }
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json()
+        if data.get("search"):
+            return data["search"][0]["id"]
+    except Exception:
+        return ""
+    return ""
+
+
+def wikidata_companies_by_industry(industry_qid: str, limit: int = 40):
+    query = f"""
+    SELECT ?company ?companyLabel ?countryLabel ?iso2 ?sitelinks ?inception WHERE {{
+      ?company wdt:P31/wdt:P279* wd:Q4830453 .
+      ?company wdt:P452 wd:{industry_qid} .
+      OPTIONAL {{ ?company wdt:P159 ?hq . ?hq wdt:P17 ?hqCountry . }}
+      OPTIONAL {{ ?company wdt:P17 ?country . }}
+      BIND(COALESCE(?hqCountry, ?country) AS ?countryFinal)
+      OPTIONAL {{ ?countryFinal wdt:P297 ?iso2 . }}
+      OPTIONAL {{ ?company wikibase:sitelinks ?sitelinks . }}
+      OPTIONAL {{ ?company wdt:P571 ?inception . }}
+      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+    }}
+    LIMIT {limit}
+    """
+    url = "https://query.wikidata.org/sparql"
+    headers = {"Accept": "application/sparql-results+json"}
+    rows = []
+    try:
+        r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
+        data = r.json()
+        for b in data["results"]["bindings"]:
+            rows.append({
+                "company": b.get("companyLabel", {}).get("value", ""),
+                "country": b.get("countryLabel", {}).get("value", "Unknown"),
+                "iso2": b.get("iso2", {}).get("value", ""),
+                "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
+                "inception": b.get("inception", {}).get("value", "")
+            })
+    except Exception:
+        return []
+    return rows
+
+
+def worldbank_latest_gdp(iso2: str):
+    url = f"https://api.worldbank.org/v2/country/{iso2}/indicator/NY.GDP.MKTP.CD"
+    try:
+        r = requests.get(url, params={"format": "json", "per_page": 60}, timeout=10)
+        data = r.json()
+        if not isinstance(data, list) or len(data) < 2:
+            return None
+        for row in data[1]:
+            if row.get("value") is not None:
+                return {"year": row.get("date"), "value": row.get("value")}
+    except Exception:
+        return None
+    return None
+
+
+# =========================
 # UI — Step 1
 # =========================
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
@@ -108,7 +236,7 @@ with st.form("industry_form"):
     submitted = st.form_submit_button("Generate report")
 
 if submitted:
-    if not industry or not industry.strip():
+    if not industry_is_valid(industry):
         st.warning("Please enter an industry to continue.")
         st.stop()
 
@@ -124,26 +252,18 @@ if submitted:
     )
 
     with st.spinner("Retrieving the five most relevant Wikipedia pages…"):
-        retriever = WikipediaRetriever(top_k_results=5, lang="en")
-        try:
-            docs = retriever.get_relevant_documents(industry.strip())
-        except AttributeError:
-            docs = retriever.invoke(industry.strip())
-        docs = docs[:5]
-
-        urls = []
-        seen = set()
-        for d in docs:
-            src = (d.metadata or {}).get("source", "")
-            if src and src not in seen:
-                urls.append(src)
-                seen.add(src)
+        docs = retrieve_wikipedia_docs(industry.strip(), k=5)
+        urls = extract_urls(docs)
 
     if not urls:
         st.error("No Wikipedia pages found. Try a more specific industry term.")
         st.stop()
 
-    st.info("The report and visuals below are generated exclusively from the five Wikipedia pages listed above.")
+    with st.expander("Show sources", expanded=True):
+        for u in urls:
+            st.write(u)
+
+    st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
     # Step 3 — Industry report
@@ -154,21 +274,7 @@ if submitted:
         unsafe_allow_html=True
     )
 
-    # Build sources text inline
-    parts = []
-    for i, d in enumerate(docs, start=1):
-        title = (d.metadata or {}).get("title", f"Source {i}")
-        url = (d.metadata or {}).get("source", "")
-        text = (d.page_content or "").strip()
-        text = re.sub(r"\s+", " ", text)[:2600]
-        parts.append(
-            f"[Source {i}]\n"
-            f"TITLE: {title}\n"
-            f"URL: {url}\n"
-            f"CONTENT EXCERPT: {text}\n"
-        )
-    sources_text = "\n\n".join(parts)
-
+    sources_text = build_sources_text(docs)
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
     system_prompt = (
@@ -207,7 +313,7 @@ if submitted:
                     {"role": "user", "content": user_prompt},
                 ]
             )
-            report = response.content or ""
+            report = cap_500_words(response.content)
         except openai.AuthenticationError:
             st.markdown(
                 """
@@ -233,98 +339,93 @@ if submitted:
             )
             st.stop()
 
-    # Remove markdown heading hashes if present
     report = re.sub(r"(?m)^#+\s*", "", report).strip()
+    st.caption(f"Word count: {len(report.split())} / 500")
 
-    # Cap to 500 words inline
-    words = report.split()
-    if len(words) > 500:
-        report = " ".join(words[:500]).rstrip() + "…"
+    st.markdown(
+        f"""
+        <div class="report-box">
+        {report.replace("\n", "<br>")}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    word_count = len(report.split())
-    st.caption(f"Word count: {word_count} / 500")
+    # =========================
+    # Visuals — external real-world data only
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Industry visuals (external real-world data)</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Visuals below use free external sources (Wikidata + World Bank).</div>",
+        unsafe_allow_html=True
+    )
 
-    # Tabs
-    tab_report, tab_visuals, tab_sources = st.tabs(["Report", "Visuals", "Sources"])
+    industry_qid = wikidata_find_industry_qid(industry.strip())
+    companies = wikidata_companies_by_industry(industry_qid, limit=60) if industry_qid else []
 
-    with tab_report:
-        st.markdown(
-            f"""
-            <div class="report-box">
-            {report.replace("\n", "<br>")}
-            </div>
-            """,
-            unsafe_allow_html=True
+    if not companies:
+        st.info("External company data could not be retrieved for this industry.")
+    else:
+        companies_df = pd.DataFrame(companies)
+
+        # Chart 1: Top companies by Wikidata prominence (sitelinks)
+        top_companies = (
+            companies_df[['company', 'sitelinks']]
+            .dropna()
+            .sort_values('sitelinks', ascending=False)
+            .head(10)
         )
+        if not top_companies.empty:
+            st.markdown("<div class='blue-accent'>Top Companies (Wikidata prominence proxy)</div>", unsafe_allow_html=True)
+            st.bar_chart(top_companies.set_index('company'))
+            st.caption("Prominence proxy based on number of Wikipedia sitelinks per company.")
 
-    with tab_visuals:
-        st.markdown("<div class='subtle'>Visuals are generated to support analysis.</div>", unsafe_allow_html=True)
+        # Chart 2: HQ country distribution
+        country_counts = (
+            companies_df[['country']]
+            .replace('', 'Unknown')
+            .value_counts()
+            .reset_index(name='count')
+            .head(10)
+        )
+        if not country_counts.empty:
+            st.markdown("<div class='blue-accent'>Company HQ by Country (Wikidata)</div>", unsafe_allow_html=True)
+            st.bar_chart(country_counts.set_index('country'))
 
-        # Attempt to extract real numeric signals from sources
-        source_text = " ".join((d.page_content or "") for d in docs)
+        # Chart 3: Company founding decade distribution
+        years = []
+        for v in companies_df['inception'].fillna(''):
+            m = re.search(r'^(\\d{4})', str(v))
+            if m:
+                years.append(int(m.group(1)))
+        if years:
+            decades = [f'{(y // 10) * 10}s' for y in years]
+            decade_counts = pd.Series(decades).value_counts().sort_index().head(12)
+            st.markdown("<div class='blue-accent'>Company Founding Decades</div>", unsafe_allow_html=True)
+            st.bar_chart(decade_counts)
 
-        years = re.findall(r"\b(19\d{2}|20\d{2})\b", source_text)
-        years_count = Counter(years)
-
-        percents = re.findall(r"\b\d{1,3}\s*%\b", source_text)
-        numbers = re.findall(r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b", source_text)
-        numeric_count = len(percents) + len(numbers)
-
-        if len(years_count) >= 4 or numeric_count >= 6:
-            st.info("These charts are derived from numeric signals found in the Wikipedia sources.")
-
-            # Chart 1: Mentions by year
-            if years_count:
-                years_sorted = sorted(years_count.items(), key=lambda x: x[0])
-                st.markdown("<div class='blue-accent'>Timeline Mentions (Years)</div>", unsafe_allow_html=True)
-                st.line_chart({"Year": [y[0] for y in years_sorted], "Mentions": [y[1] for y in years_sorted]}, x="Year", y="Mentions")
-
-            # Chart 2: Percent mentions count
-            if percents:
-                st.markdown("<div class='blue-accent'>Percent Values Referenced</div>", unsafe_allow_html=True)
-                pct_values = [int(re.sub(r"[^0-9]", "", p)) for p in percents[:12]]
-                st.bar_chart({"Percent": list(range(1, len(pct_values) + 1)), "Value": pct_values}, x="Percent", y="Value")
-        else:
-            st.info("These charts are synthetic/illustrative (not real market metrics).")
-
-            seed = int(hashlib.md5(industry.strip().encode("utf-8")).hexdigest(), 16)
-            rng = random.Random(seed)
-
-            # Segment attractiveness
-            segments = ["Manufacturing", "Distribution", "Retail", "Digital Channels", "Logistics", "Services"]
-            attractiveness = [rng.randint(35, 85) for _ in segments]
-            st.markdown("<div class='blue-accent'>Segment Attractiveness (Synthetic)</div>", unsafe_allow_html=True)
-            st.bar_chart({"Segment": segments, "Attractiveness Score": attractiveness}, x="Segment", y="Attractiveness Score")
-
-            # Value chain emphasis
-            values = [rng.randint(10, 35) for _ in segments]
-            st.markdown("<div class='blue-accent'>Indicative Value Chain Emphasis (Synthetic)</div>", unsafe_allow_html=True)
-            st.bar_chart({"Segment": segments, "Score": values}, x="Segment", y="Score")
-
-            # Demand index
-            years = [2019, 2020, 2021, 2022, 2023, 2024]
-            index = [100]
-            for _ in years[1:]:
-                index.append(index[-1] + rng.randint(-8, 14))
-            st.markdown("<div class='blue-accent'>Illustrative Demand Index (Synthetic)</div>", unsafe_allow_html=True)
-            st.line_chart({"Year": years, "Index": index}, x="Year", y="Index")
-
-        # Always show a source-derived term chart
-        tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", source_text.lower())
-        stop = {
-            "the","and","for","with","that","this","from","are","was","were","has","have",
-            "had","its","their","which","into","also","such","than","over","under","between",
-            "about","after","before","these","those","other","more","most","used","use","using",
-            "industry","market","company","companies","products","product"
-        }
-        counts = Counter(t for t in tokens if t not in stop)
-        top_terms = counts.most_common(8)
-        if top_terms:
-            terms = [t[0].title() for t in top_terms]
-            values = [t[1] for t in top_terms]
-            st.markdown("<div class='blue-accent'>Top Topics Mentioned (Source-Derived)</div>", unsafe_allow_html=True)
-            st.bar_chart({"Topic": terms, "Mentions": values}, x="Topic", y="Mentions")
-
-    with tab_sources:
-        for u in urls:
-            st.write(u)
+        # Chart 4: GDP of HQ countries (World Bank)
+        iso2_list = (
+            companies_df[['country', 'iso2']]
+            .dropna()
+            .drop_duplicates()
+            .head(8)
+        )
+        gdp_rows = []
+        for _, row in iso2_list.iterrows():
+            iso2 = str(row['iso2']).strip()
+            if not iso2:
+                continue
+            gdp = worldbank_latest_gdp(iso2)
+            if gdp:
+                gdp_rows.append({
+                    'country': row['country'],
+                    'gdp': gdp['value'],
+                    'year': gdp['year']
+                })
+        if gdp_rows:
+            gdp_df = pd.DataFrame(gdp_rows).sort_values('gdp', ascending=False)
+            st.markdown("<div class='blue-accent'>GDP of HQ Countries (World Bank)</div>", unsafe_allow_html=True)
+            st.bar_chart(gdp_df.set_index('country')[['gdp']])
+            latest_year = gdp_df['year'].astype(str).max()
+            st.caption(f"GDP (current US$), latest available year per country (max year shown: {latest_year}).")
