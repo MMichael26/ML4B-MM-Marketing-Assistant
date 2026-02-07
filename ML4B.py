@@ -40,9 +40,11 @@ st.markdown(
     }
     .section-title {
         font-weight: 700;
+        font-size: 1.1rem;
         border-bottom: 1px solid #CBD5E1;
         padding-bottom: 4px;
         margin: 10px 0 6px 0;
+        color: #0F172A;
     }
     code {
         white-space: pre-wrap;
@@ -54,6 +56,15 @@ st.markdown(
 
 st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
+
+# =========================
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
 
 # =========================
 # Sidebar: API Key input
@@ -72,9 +83,25 @@ user_key = st.sidebar.text_input(
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
-# =========================
-# Sidebar: CSV + External API keys
-# =========================
+st.sidebar.header("Report Preferences")
+report_focus = st.sidebar.selectbox(
+    "Report focus",
+    [
+        "Balanced",
+        "Acquisition fit",
+        "Market size & growth",
+        "Competitive landscape",
+        "Regulation & risk",
+        "Operations & supply chain",
+    ],
+)
+detail_level = st.sidebar.select_slider(
+    "Detail level",
+    options=["Concise", "Standard", "Detailed"],
+    value="Standard",
+)
+st.sidebar.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
+
 st.sidebar.header("Data (CSV optional)")
 uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
 k_clusters = st.sidebar.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
@@ -302,11 +329,11 @@ if submitted:
                 break
 
     # =========================
-    # Step 3 — Industry report
+    # Step 3 — Report (Wikipedia-only)
     # =========================
-    st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Step 3 — Industry report</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>Business-analyst style briefing with citations [Source #].</div>",
+        "<div class='subtle'>Industry Report based on wikipedia sources (Under 500 words).</div>",
         unsafe_allow_html=True
     )
 
@@ -326,6 +353,8 @@ if submitted:
     user_prompt = (
         f"Industry: {industry.strip()}\n\n"
         "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
+        f"Report focus: {report_focus}.\n"
+        f"Detail level: {detail_level}.\n"
         "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
         "Required structure (use these headings):\n"
         "1) Executive snapshot (2–3 sentences)\n"
