@@ -1,9 +1,7 @@
 import os
 import re
-from collections import Counter
 import streamlit as st
 import requests
-import pandas as pd
 import openai
 
 from langchain_community.retrievers import WikipediaRetriever
@@ -149,7 +147,7 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# External data helpers (for visuals only)
+# External data helpers (free sources)
 # =========================
 def wikidata_find_industry_qid(industry_label: str) -> str:
     url = "https://www.wikidata.org/w/api.php"
@@ -158,7 +156,7 @@ def wikidata_find_industry_qid(industry_label: str) -> str:
         "search": industry_label,
         "language": "en",
         "format": "json",
-        "limit": 1
+        "limit": 1,
     }
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -192,20 +190,22 @@ def wikidata_companies_by_industry(industry_qid: str, limit: int = 40):
         r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
         data = r.json()
         for b in data["results"]["bindings"]:
-            rows.append({
-                "company": b.get("companyLabel", {}).get("value", ""),
-                "country": b.get("countryLabel", {}).get("value", "Unknown"),
-                "iso2": b.get("iso2", {}).get("value", ""),
-                "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
-                "inception": b.get("inception", {}).get("value", "")
-            })
+            rows.append(
+                {
+                    "company": b.get("companyLabel", {}).get("value", ""),
+                    "country": b.get("countryLabel", {}).get("value", "Unknown"),
+                    "iso2": b.get("iso2", {}).get("value", ""),
+                    "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
+                    "inception": b.get("inception", {}).get("value", ""),
+                }
+            )
     except Exception:
         return []
     return rows
 
 
-def worldbank_latest_gdp(iso2: str):
-    url = f"https://api.worldbank.org/v2/country/{iso2}/indicator/NY.GDP.MKTP.CD"
+def worldbank_latest_indicator(iso2: str, indicator: str):
+    url = f"https://api.worldbank.org/v2/country/{iso2}/indicator/{indicator}"
     try:
         r = requests.get(url, params={"format": "json", "per_page": 60}, timeout=10)
         data = r.json()
@@ -356,7 +356,7 @@ if submitted:
     # =========================
     st.markdown("<h3 class='blue-accent'>Industry visuals (external real-world data)</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>Visuals below use free external sources (Wikidata + World Bank).</div>",
+        "<div class='subtle'>Visuals use free external sources: Wikidata + World Bank.</div>",
         unsafe_allow_html=True
     )
 
@@ -366,66 +366,90 @@ if submitted:
     if not companies:
         st.info("External company data could not be retrieved for this industry.")
     else:
-        companies_df = pd.DataFrame(companies)
-
-        # Chart 1: Top companies by Wikidata prominence (sitelinks)
-        top_companies = (
-            companies_df[['company', 'sitelinks']]
-            .dropna()
-            .sort_values('sitelinks', ascending=False)
-            .head(10)
-        )
-        if not top_companies.empty:
+        # Top companies by Wikidata prominence (sitelinks)
+        top_companies = sorted(
+            [c for c in companies if c["company"]],
+            key=lambda x: x.get("sitelinks", 0),
+            reverse=True
+        )[:10]
+        if top_companies:
             st.markdown("<div class='blue-accent'>Top Companies (Wikidata prominence proxy)</div>", unsafe_allow_html=True)
-            st.bar_chart(top_companies.set_index('company'))
-            st.caption("Prominence proxy based on number of Wikipedia sitelinks per company.")
+            st.bar_chart(
+                {"Company": [c["company"] for c in top_companies], "Sitelinks": [c["sitelinks"] for c in top_companies]},
+                x="Company",
+                y="Sitelinks",
+            )
+            st.caption("Prominence proxy based on Wikipedia sitelinks per company.")
 
-        # Chart 2: HQ country distribution
-        country_counts = (
-            companies_df[['country']]
-            .replace('', 'Unknown')
-            .value_counts()
-            .reset_index(name='count')
-            .head(10)
-        )
-        if not country_counts.empty:
+        # HQ country distribution
+        country_counts = {}
+        for c in companies:
+            country = c.get("country") or "Unknown"
+            country_counts[country] = country_counts.get(country, 0) + 1
+        top_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        if top_countries:
             st.markdown("<div class='blue-accent'>Company HQ by Country (Wikidata)</div>", unsafe_allow_html=True)
-            st.bar_chart(country_counts.set_index('country'))
+            st.bar_chart(
+                {"Country": [c[0] for c in top_countries], "Count": [c[1] for c in top_countries]},
+                x="Country",
+                y="Count",
+            )
 
-        # Chart 3: Company founding decade distribution
+        # Founding decades
         years = []
-        for v in companies_df['inception'].fillna(''):
-            m = re.search(r'^(\\d{4})', str(v))
+        for c in companies:
+            val = c.get("inception", "")
+            m = re.search(r"^(\d{4})", str(val))
             if m:
                 years.append(int(m.group(1)))
         if years:
-            decades = [f'{(y // 10) * 10}s' for y in years]
-            decade_counts = pd.Series(decades).value_counts().sort_index().head(12)
+            decades = {}
+            for y in years:
+                d = f"{(y // 10) * 10}s"
+                decades[d] = decades.get(d, 0) + 1
+            decades_sorted = sorted(decades.items(), key=lambda x: x[0])[:12]
             st.markdown("<div class='blue-accent'>Company Founding Decades</div>", unsafe_allow_html=True)
-            st.bar_chart(decade_counts)
+            st.bar_chart(
+                {"Decade": [d[0] for d in decades_sorted], "Count": [d[1] for d in decades_sorted]},
+                x="Decade",
+                y="Count",
+            )
 
-        # Chart 4: GDP of HQ countries (World Bank)
-        iso2_list = (
-            companies_df[['country', 'iso2']]
-            .dropna()
-            .drop_duplicates()
-            .head(8)
-        )
-        gdp_rows = []
-        for _, row in iso2_list.iterrows():
-            iso2 = str(row['iso2']).strip()
-            if not iso2:
+        # World Bank macro context for HQ countries
+        iso2_seen = set()
+        macro_rows = []
+        for c in companies:
+            iso2 = (c.get("iso2") or "").strip()
+            if not iso2 or iso2 in iso2_seen:
                 continue
-            gdp = worldbank_latest_gdp(iso2)
-            if gdp:
-                gdp_rows.append({
-                    'country': row['country'],
-                    'gdp': gdp['value'],
-                    'year': gdp['year']
-                })
-        if gdp_rows:
-            gdp_df = pd.DataFrame(gdp_rows).sort_values('gdp', ascending=False)
-            st.markdown("<div class='blue-accent'>GDP of HQ Countries (World Bank)</div>", unsafe_allow_html=True)
-            st.bar_chart(gdp_df.set_index('country')[['gdp']])
-            latest_year = gdp_df['year'].astype(str).max()
+            iso2_seen.add(iso2)
+            gdp = worldbank_latest_indicator(iso2, "NY.GDP.MKTP.CD")
+            pop = worldbank_latest_indicator(iso2, "SP.POP.TOTL")
+            if gdp and pop:
+                macro_rows.append(
+                    {
+                        "country": c.get("country") or iso2,
+                        "gdp": gdp["value"],
+                        "pop": pop["value"],
+                        "year": gdp["year"],
+                    }
+                )
+            if len(macro_rows) >= 8:
+                break
+
+        if macro_rows:
+            st.markdown("<div class='blue-accent'>HQ Country GDP (World Bank)</div>", unsafe_allow_html=True)
+            st.bar_chart(
+                {"Country": [r["country"] for r in macro_rows], "GDP (current US$)": [r["gdp"] for r in macro_rows]},
+                x="Country",
+                y="GDP (current US$)",
+            )
+            latest_year = max(str(r["year"]) for r in macro_rows)
             st.caption(f"GDP (current US$), latest available year per country (max year shown: {latest_year}).")
+
+            st.markdown("<div class='blue-accent'>HQ Country Population (World Bank)</div>", unsafe_allow_html=True)
+            st.bar_chart(
+                {"Country": [r["country"] for r in macro_rows], "Population": [r["pop"] for r in macro_rows]},
+                x="Country",
+                y="Population",
+            )
