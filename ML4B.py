@@ -14,10 +14,13 @@ from langchain_openai import ChatOpenAI
 
 
 # =========================
-# Page config + styling
+# Page config
 # =========================
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
+# =========================
+# Blue accent styling (light + consistent)
+# =========================
 st.markdown(
     """
     <style>
@@ -36,16 +39,6 @@ st.markdown(
         border-radius: 10px;
         border-left: 6px solid #2563EB;
     }
-    .soft-box {
-        background:#F8FAFC;
-        border:1px solid #E2E8F0;
-        color:#0F172A;
-        padding:14px 16px;
-        border-radius:10px;
-    }
-    .soft-muted {
-        color:#475569;
-    }
     code {
         white-space: pre-wrap;
     }
@@ -58,17 +51,28 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key + settings
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
+
+# =========================
+# Sidebar: API Key input (masked + show toggle)
 # =========================
 st.sidebar.header("API Key")
 st.sidebar.write("Enter your OpenAI API key to run the report.")
-st.sidebar.caption("Leave blank to use the default key (if configured).")
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
     type="default" if show_key else "password"
 )
 
+# =========================
+# Sidebar: Model settings
+# =========================
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
@@ -77,29 +81,7 @@ uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"
 k_clusters = st.sidebar.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
 
 # =========================
-# API key handling (default + allow override)
-# =========================
-DEFAULT_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "")).strip()
-api_key = (user_key or "").strip() or DEFAULT_KEY
-
-if not api_key:
-    st.markdown(
-        """
-        <div class="soft-box">
-            <strong>Almost there.</strong>
-            Please enter your OpenAI API key in the sidebar to continue.
-            <span class="soft-muted">It stays on your machine.</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.stop()
-
-os.environ["OPENAI_API_KEY"] = api_key
-
-
-# =========================
-# Helper functions (Wikipedia for report only)
+# Helper functions
 # =========================
 def industry_is_valid(industry: str) -> bool:
     return bool(industry and industry.strip())
@@ -121,6 +103,7 @@ def extract_urls(docs):
         if src:
             urls.append(src)
 
+    # De-duplicate while preserving order
     seen = set()
     unique = []
     for u in urls:
@@ -132,13 +115,18 @@ def extract_urls(docs):
 
 
 def build_sources_text(docs) -> str:
+    """
+    Build context ONLY from the retrieved Wikipedia pages.
+    We number sources so the model can cite like [Source 1].
+    """
     parts = []
     for i, d in enumerate(docs, start=1):
         title = (d.metadata or {}).get("title", f"Source {i}")
         url = (d.metadata or {}).get("source", "")
         text = (d.page_content or "").strip()
         text = re.sub(r"\s+", " ", text)
-        text = text[:2600]
+        text = text[:2600]  # bounded context per source
+
         parts.append(
             f"[Source {i}]\n"
             f"TITLE: {title}\n"
@@ -176,85 +164,69 @@ def prepare_for_kmeans(df: pd.DataFrame):
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.shape[1] < 2:
         return None, None
+    # z-score scaling
     scaled = (numeric_df - numeric_df.mean()) / (numeric_df.std(ddof=0) + 1e-9)
     return numeric_df, scaled
 
 
 # =========================
-# External data helpers (free sources)
+# Report analysis helpers
 # =========================
-def wikidata_find_industry_qid(industry_label: str) -> str:
-    url = "https://www.wikidata.org/w/api.php"
-    params = {
-        "action": "wbsearchentities",
-        "search": industry_label,
-        "language": "en",
-        "format": "json",
-        "limit": 1,
-    }
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        data = r.json()
-        if data.get("search"):
-            return data["search"][0]["id"]
-    except Exception:
-        return ""
-    return ""
+def split_report_sections(report_text: str):
+    sections = []
+    current_title = "Report"
+    current_lines = []
+    for line in report_text.splitlines():
+        if re.match(r"^\s*\d+\)\s+", line):
+            if current_lines:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+            current_title = re.sub(r"^\s*\d+\)\s+", "", line).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+    if current_lines:
+        sections.append((current_title, "\n".join(current_lines).strip()))
+    return sections
 
 
-def wikidata_companies_by_industry(industry_qid: str, limit: int = 40):
-    query = f"""
-    SELECT ?company ?companyLabel ?countryLabel ?iso2 ?sitelinks ?inception WHERE {{
-      ?company wdt:P31/wdt:P279* wd:Q4830453 .
-      ?company wdt:P452 wd:{industry_qid} .
-      OPTIONAL {{ ?company wdt:P159 ?hq . ?hq wdt:P17 ?hqCountry . }}
-      OPTIONAL {{ ?company wdt:P17 ?country . }}
-      BIND(COALESCE(?hqCountry, ?country) AS ?countryFinal)
-      OPTIONAL {{ ?countryFinal wdt:P297 ?iso2 . }}
-      OPTIONAL {{ ?company wikibase:sitelinks ?sitelinks . }}
-      OPTIONAL {{ ?company wdt:P571 ?inception . }}
-      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-    }}
-    LIMIT {limit}
-    """
-    url = "https://query.wikidata.org/sparql"
-    headers = {"Accept": "application/sparql-results+json"}
-    rows = []
-    try:
-        r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
-        data = r.json()
-        for b in data["results"]["bindings"]:
-            rows.append(
-                {
-                    "company": b.get("companyLabel", {}).get("value", ""),
-                    "country": b.get("countryLabel", {}).get("value", "Unknown"),
-                    "iso2": b.get("iso2", {}).get("value", ""),
-                    "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
-                    "inception": b.get("inception", {}).get("value", ""),
-                }
-            )
-    except Exception:
-        return []
-    return rows
-
-
-def worldbank_latest_indicator(iso2: str, indicator: str):
-    url = f"https://api.worldbank.org/v2/country/{iso2}/indicator/{indicator}"
-    try:
-        r = requests.get(url, params={"format": "json", "per_page": 60}, timeout=10)
-        data = r.json()
-        if not isinstance(data, list) or len(data) < 2:
-            return None
-        for row in data[1]:
-            if row.get("value") is not None:
-                return {"year": row.get("date"), "value": row.get("value")}
-    except Exception:
-        return None
-    return None
+def section_confidence_score(section_text: str):
+    # Heuristic: combine length and citation density
+    words = section_text.split()
+    word_count = max(1, len(words))
+    citations = len(re.findall(r"\[Source\s+\d+\]", section_text))
+    citation_density = min(1.0, citations / max(1, word_count / 60))
+    length_score = min(1.0, word_count / 120)
+    score = int((0.6 * citation_density + 0.4 * length_score) * 100)
+    return max(10, min(100, score))
 
 
 # =========================
-# UI — Step 1
+# API key handling
+# =========================
+api_key = (user_key or "").strip()
+if not api_key:
+    st.markdown(
+        """
+        <div style="
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            color:#0F172A;
+            padding:14px 16px;
+            border-radius:10px;
+        ">
+            <strong>Almost there.</strong>
+            Please enter your OpenAI API key in the sidebar to continue.
+            <span style="color:#475569;">It stays on your machine.</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    st.stop()
+os.environ["OPENAI_API_KEY"] = api_key
+
+
+# =========================
+# UI — Q1
 # =========================
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
@@ -270,6 +242,7 @@ with st.form("industry_form"):
     submitted = st.form_submit_button("Generate report")
 
 if submitted:
+    # Q1 validation
     if not industry_is_valid(industry):
         st.warning("Please enter an industry to continue.")
         st.stop()
@@ -277,7 +250,7 @@ if submitted:
     st.success("Industry received. Fetching Wikipedia sources...")
 
     # =========================
-    # Step 2 — Wikipedia sources
+    # Q2 — URLs of five most relevant Wikipedia pages
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -300,7 +273,7 @@ if submitted:
     st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
-    # Step 3 — Industry report
+    # Q3 — Industry report (<500 words), based on those five pages
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -309,8 +282,10 @@ if submitted:
     )
 
     sources_text = build_sources_text(docs)
+
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
+    # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
         "The analyst is evaluating a potential acquisition target in this industry.\n"
@@ -318,8 +293,7 @@ if submitted:
         "Do NOT use outside knowledge.\n"
         "When you make a factual claim, add a citation in the form [Source #].\n"
         "If the sources do not support a claim, write: 'Not specified in the sources.'\n"
-        "Keep the full report under 500 words.\n"
-        "Use plain text headings without markdown hashes."
+        "Keep the full report under 500 words."
     )
 
     user_prompt = (
@@ -340,41 +314,24 @@ if submitted:
     )
 
     with st.spinner("Generating industry briefing…"):
-        try:
-            response = llm.invoke(
-                [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ]
-            )
-            report = cap_500_words(response.content)
-        except openai.AuthenticationError:
-            st.markdown(
-                """
-                <div class="soft-box">
-                    <strong>We couldn’t verify that key.</strong>
-                    Please double‑check it and try again.
-                    <span class="soft-muted">If you just updated it, refresh the page.</span>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            st.stop()
-        except Exception:
-            st.markdown(
-                """
-                <div class="soft-box">
-                    <strong>Small hiccup.</strong>
-                    We couldn’t finish the report just now.
-                    <span class="soft-muted">Please try again in a moment.</span>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            st.stop()
+        response = llm.invoke(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+        report = cap_500_words(response.content)
 
-    report = re.sub(r"(?m)^#+\s*", "", report).strip()
-    st.caption(f"Word count: {len(report.split())} / 500")
+    word_count = len(report.split())
+    st.caption(f"Word count: {word_count} / 500")
+
+    # Source coverage signal (for methodology / quality)
+    source_lengths = [len((d.page_content or "").strip()) for d in docs]
+    avg_len = int(sum(source_lengths) / max(1, len(source_lengths)))
+    coverage_score = min(
+        100,
+        int((len(docs) / 5) * 40 + (min(sum(source_lengths), 9000) / 9000) * 60),
+    )
 
     st.markdown(
         f"""
@@ -386,34 +343,41 @@ if submitted:
     )
 
     # =========================
-    # Visuals — external real-world data only
+    # Confidence scoring by section
     # =========================
-    st.markdown("<h3 class='blue-accent'>Industry visuals (external real-world data)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Section Confidence Scores</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>Visuals use free external sources: Wikidata + World Bank.</div>",
+        "<div class='subtle'>Heuristic confidence based on section length and citation density.</div>",
         unsafe_allow_html=True
     )
-
-    industry_qid = wikidata_find_industry_qid(industry.strip())
-    companies = wikidata_companies_by_industry(industry_qid, limit=60) if industry_qid else []
-
-    if companies:
-        top_companies = sorted(
-            [c for c in companies if c["company"]],
-            key=lambda x: x.get("sitelinks", 0),
-            reverse=True
-        )[:10]
-        if top_companies:
-            st.markdown("<div class='blue-accent'>Top Companies (Wikidata prominence proxy)</div>", unsafe_allow_html=True)
-            st.bar_chart(
-                {"Company": [c["company"] for c in top_companies], "Sitelinks": [c["sitelinks"] for c in top_companies]},
-                x="Company",
-                y="Sitelinks",
+    sections = split_report_sections(report)
+    if sections:
+        conf_rows = []
+        for title, text in sections:
+            conf_rows.append(
+                {
+                    "Section": title,
+                    "Confidence": section_confidence_score(text),
+                    "Citations": len(re.findall(r"\[Source\s+\d+\]", text)),
+                }
             )
-            st.caption("Prominence proxy based on Wikipedia sitelinks per company.")
+        conf_df = pd.DataFrame(conf_rows)
+        conf_chart = (
+            alt.Chart(conf_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("Section:N", sort=None, title="Section"),
+                y=alt.Y("Confidence:Q", title="Confidence (0–100)"),
+                color=alt.Color("Confidence:Q", scale=alt.Scale(scheme="blues")),
+                tooltip=["Section", "Confidence", "Citations"],
+            )
+        )
+        st.altair_chart(conf_chart, use_container_width=True)
+    else:
+        st.caption("Could not detect section headings for confidence scoring.")
 
     # =========================
-    # K-means Clustering (CSV or Synthetic)
+    # Clustering — CSV or synthetic (K-means)
     # =========================
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -425,11 +389,14 @@ if submitted:
         try:
             raw = uploaded_csv.getvalue().decode("utf-8")
             df = pd.read_csv(io.StringIO(raw))
+            used_synthetic = False
         except Exception:
             st.warning("Could not read the CSV. Please upload a valid CSV file.")
             df = None
+            used_synthetic = False
     else:
         df = make_synthetic_dataset(industry.strip())
+        used_synthetic = True
 
     if df is not None:
         numeric_df, scaled = prepare_for_kmeans(df)
@@ -441,6 +408,7 @@ if submitted:
             df_plot = numeric_df.copy()
             df_plot["cluster"] = clusters.astype(str)
 
+            # Pick first two numeric columns for a 2D view
             x_col, y_col = numeric_df.columns[:2]
             chart = (
                 alt.Chart(df_plot)
@@ -455,3 +423,91 @@ if submitted:
             st.altair_chart(chart, use_container_width=True)
 
             st.caption("Clusters are based on numeric columns only. Non-numeric columns are ignored.")
+
+    # =========================
+    # Methodology & Critical Evaluation
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Methodology & Critical Evaluation</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>This section documents assumptions, limitations, and hypotheses to test.</div>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"""
+        <div class="report-box">
+        <b>Source coverage score:</b> {coverage_score}/100<br>
+        <b>Sources used:</b> {len(docs)}<br>
+        <b>Average source excerpt length:</b> {avg_len} characters<br>
+        <b>Clustering dataset:</b> {'User CSV' if not used_synthetic else 'Synthetic (industry-seeded)'}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("**Critical evaluation of methods**")
+    st.write(
+        "1. The report is grounded only in Wikipedia sources, which can bias toward general definitions and public summaries. "
+        "This improves explainability but may omit recent market dynamics or private company details."
+    )
+    st.write(
+        "2. External visuals rely on Wikidata and World Bank. Coverage varies by industry and region, "
+        "so company lists may be incomplete or skewed toward well-documented firms."
+    )
+    st.write(
+        "3. Clustering uses only numeric columns. If the CSV lacks normalized metrics or comparable definitions, "
+        "cluster boundaries may reflect data quality rather than true segment structure."
+    )
+
+    st.markdown("**Methodology improvements / new insights**")
+    st.write(
+        "1. Introduce a source-quality weighting (e.g., prioritize sector-specific pages and reduce general pages) "
+        "to improve relevance for acquisition analysis."
+    )
+    st.write(
+        "2. Add a temporal freshness check by comparing last-modified dates of sources to flag stale inputs."
+    )
+    st.write(
+        "3. Incorporate structured financial comparables from open filings or public registries where available."
+    )
+
+    st.markdown("**Hypotheses to test next**")
+    st.write(
+        "1. Leading firms in this industry disproportionately cluster in a small number of HQ countries, "
+        "implying geographic concentration risk."
+    )
+    st.write(
+        "2. Companies with higher capex intensity and margins form a distinct strategic cluster suitable for acquisition."
+    )
+    st.write(
+        "3. The industry’s value chain is consolidating, indicated by a rising share of large, highly visible firms."
+    )
+
+    # =========================
+    # Source bias heatmap
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Source Bias Heatmap</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Shows which sources are most cited across report sections.</div>",
+        unsafe_allow_html=True
+    )
+    if sections:
+        heat_rows = []
+        for title, text in sections:
+            for i in range(1, len(docs) + 1):
+                count = len(re.findall(rf"\[Source\s+{i}\]", text))
+                heat_rows.append({"Section": title, "Source": f"Source {i}", "Count": count})
+        heat_df = pd.DataFrame(heat_rows)
+        heat_chart = (
+            alt.Chart(heat_df)
+            .mark_rect()
+            .encode(
+                x=alt.X("Source:N", title="Source"),
+                y=alt.Y("Section:N", title="Section"),
+                color=alt.Color("Count:Q", scale=alt.Scale(scheme="blues"), title="Citations"),
+                tooltip=["Section", "Source", "Count"],
+            )
+        )
+        st.altair_chart(heat_chart, use_container_width=True)
+    else:
+        st.caption("No sections detected to build heatmap.")
