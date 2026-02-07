@@ -2,14 +2,14 @@ import os
 import re
 import streamlit as st
 
+from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
-from ml4b_helpers import validate_industry_with_llm, get_top_5_wikipedia_pages
 
 
 # =========================
 # Page config
 # =========================
-st.set_page_config(page_title="The Best Market Research Assistant", layout="wide")
+st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
 # =========================
 # Blue accent styling (light + consistent)
@@ -40,37 +40,64 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("The Best Market Research Assistant")
-st.caption("Designed to provide you with quick industry briefings.")
+st.title("Market Research Assistant (Wikipedia-grounded)")
+st.caption("Designed for a business analyst: quick industry briefing grounded in retrieved Wikipedia sources.")
 
 # =========================
-# API key handling (Streamlit Secrets or sidebar)
+# Local Development (VS Code) instructions
 # =========================
-api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-
-# Fallback: sidebar input if no API key found
-if not api_key:
-    st.sidebar.header("🔑 API Key")
-    st.sidebar.write("Enter your OpenAI API key to use this app.")
-    show_key = st.sidebar.checkbox("Show API key", value=False)
-    user_key = st.sidebar.text_input(
-        "OpenAI API Key",
-        type="default" if show_key else "password"
-    )
-    api_key = user_key
-
-if not api_key:
-    st.error("⚠️ OPENAI_API_KEY not found. Add it to Streamlit Secrets or enter it in the sidebar.")
-    st.stop()
-
-os.environ["OPENAI_API_KEY"] = api_key
-
+st.markdown("<h3 class='blue-accent'>Step 2 — Local Development (VS Code)</h3>", unsafe_allow_html=True)
+st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+st.code('export OPENAI_API_KEY="sk-..."', language="bash")
 
 # =========================
-# Helper function for Q3
+# Sidebar: API Key input (masked + show toggle)
 # =========================
+st.sidebar.header("API Key")
+st.sidebar.write("Enter your OpenAI API key to use this app.")
+show_key = st.sidebar.checkbox("Show API key", value=False)
+user_key = st.sidebar.text_input(
+    "OpenAI API Key",
+    type="default" if show_key else "password"
+)
+
+# =========================
+# Helper functions
+# =========================
+def industry_is_valid(industry: str) -> bool:
+    return bool(industry and industry.strip())
+
+
+def retrieve_wikipedia_docs(industry: str, k: int = 5):
+    retriever = WikipediaRetriever(top_k_results=k, lang="en")
+    docs = retriever.get_relevant_documents(industry)
+    return docs[:k]
+
+
+def extract_urls(docs):
+    urls = []
+    for d in docs:
+        src = (d.metadata or {}).get("source", "")
+        if src:
+            urls.append(src)
+
+    # De-duplicate while preserving order
+    seen = set()
+    unique = []
+    for u in urls:
+        if u not in seen:
+            unique.append(u)
+            seen.add(u)
+
+    return unique[:5]
+
+
 def build_sources_text(docs) -> str:
-    """Build context from Wikipedia pages for Q3 report generation."""
+    """
+    Build context ONLY from the retrieved Wikipedia pages.
+    We number sources so the model can cite like [Source 1].
+    """
     parts = []
     for i, d in enumerate(docs, start=1):
         title = (d.metadata or {}).get("title", f"Source {i}")
@@ -89,7 +116,6 @@ def build_sources_text(docs) -> str:
 
 
 def cap_500_words(text: str) -> str:
-    """Ensure report is under 500 words."""
     words = (text or "").split()
     if len(words) <= 500:
         return text.strip()
@@ -97,71 +123,70 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# UI — Q1: Industry Validation
+# API key handling
 # =========================
-st.markdown("<h3 class='blue-accent'>Provide an Industry</h3>", unsafe_allow_html=True)
+api_key = user_key or st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+if not api_key:
+    st.error("OPENAI_API_KEY not found. Add it to Streamlit Secrets, set it as an environment variable, or enter it in the sidebar.")
+    st.stop()
+os.environ["OPENAI_API_KEY"] = api_key
+
+
+# =========================
+# UI — Q1
+# =========================
+st.markdown("<h3 class='blue-accent'>Q1 — Step 1: Provide an industry</h3>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='subtle'>The assistant checks that a valid industry is provided. If not, it requests an update.</div>",
+    "<div class='subtle'>The assistant checks an industry is provided. If not, it requests an update.</div>",
     unsafe_allow_html=True
 )
 
-industry_input = st.text_input("Industry (e.g., Fast fashion, Semiconductor industry, Renewable energy)")
+industry = st.text_input("Industry (e.g., Fast fashion, Semiconductor industry)")
 
-if st.button("Validate & Continue", type="primary"):
-    
-    # Q1: Validate with LLM
-    with st.spinner("🤖 Validating industry input..."):
-        validation = validate_industry_with_llm(industry_input, api_key)
-    
-    if not validation['is_valid']:
-        # Invalid input
-        st.error(validation['message'])
+if st.button("Run"):
+    # Q1 validation
+    if not industry_is_valid(industry):
+        st.warning("Please provide an industry to continue.")
         st.stop()
-    
-    # Valid input - proceed
-    st.success(validation['message'])
-    industry = validation['industry_name']
-    
+
+    st.success("Industry received. Proceeding to Wikipedia retrieval (Q2).")
+
     # =========================
-    # Q2: Wikipedia URLs (Top 5 with LLM Ranking)
+    # Q2 — URLs of five most relevant Wikipedia pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Q2 — Step 2: Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>The assistant retrieves Wikipedia pages and uses AI to rank the five most relevant.</div>",
+        "<div class='subtle'>The assistant retrieves Wikipedia pages and returns the URLs for the five most relevant.</div>",
         unsafe_allow_html=True
     )
 
-    with st.spinner("🔍 Searching and ranking Wikipedia pages..."):
-        docs, urls = get_top_5_wikipedia_pages(industry, api_key)
+    with st.spinner("Retrieving the five most relevant Wikipedia pages…"):
+        docs = retrieve_wikipedia_docs(industry.strip(), k=5)
+        urls = extract_urls(docs)
 
-    if not urls or len(urls) < 5:
-        st.error("Could not retrieve 5 Wikipedia pages. Try a more specific industry term.")
+    if not urls:
+        st.error("No Wikipedia pages found. Try a more specific industry term.")
         st.stop()
 
-    st.success(f"✅ Found and ranked {len(urls)} Wikipedia pages")
-    
-    for i, url in enumerate(urls, 1):
-        st.write(f"{i}. {url}")
+    for u in urls:
+        st.write(u)
 
-    st.info("📊 The report below is generated exclusively from these five Wikipedia pages.")
+    st.info("The report in Q3 is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
-    # Q3: Industry Report (<500 words)
+    # Q3 — Industry report (<500 words), based on those five pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Industry Report (<500 words)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Q3 — Step 3: Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>Business-analyst style briefing with source citations [Source #].</div>",
+        "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
         unsafe_allow_html=True
     )
 
     sources_text = build_sources_text(docs)
 
-    # UPDATED: Use gpt-4o with temperature 0.7 for better quality
-    llm = ChatOpenAI(
-        model="gpt-4o",           
-        temperature=0.7            
-    )
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
 
+    # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
         "The analyst is evaluating a potential acquisition target in this industry.\n"
@@ -173,7 +198,7 @@ if st.button("Validate & Continue", type="primary"):
     )
 
     user_prompt = (
-        f"Industry: {industry}\n\n"
+        f"Industry: {industry.strip()}\n\n"
         "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
         "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
         "Required structure (use these headings):\n"
@@ -189,7 +214,7 @@ if st.button("Validate & Continue", type="primary"):
         f"SOURCES:\n{sources_text}"
     )
 
-    with st.spinner("✍️ Generating industry briefing..."):
+    with st.spinner("Generating industry briefing…"):
         response = llm.invoke(
             [
                 {"role": "system", "content": system_prompt},
@@ -199,11 +224,7 @@ if st.button("Validate & Continue", type="primary"):
         report = cap_500_words(response.content)
 
     word_count = len(report.split())
-    
-    if word_count <= 500:
-        st.caption(f"✅ Word count: {word_count} / 500")
-    else:
-        st.caption(f"⚠️ Word count: {word_count} / 500 (slightly over)")
+    st.caption(f"Word count: {word_count} / 500")
 
     st.markdown(
         f"""
@@ -213,14 +234,4 @@ if st.button("Validate & Continue", type="primary"):
         """,
         unsafe_allow_html=True
     )
-    
-    # Download button
-    st.download_button(
-        label="⬇️ Download Report",
-        data=report,
-        file_name=f"{industry.replace(' ', '_')}_report.txt",
-        mime="text/plain"
-    )
-```
 
----
