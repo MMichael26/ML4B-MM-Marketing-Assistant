@@ -124,11 +124,11 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# API key handling
+# API key handling (require manual entry)
 # =========================
-api_key = user_key or st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+api_key = (user_key or "").strip()
 if not api_key:
-    st.error("OPENAI_API_KEY not found. Add it to Streamlit Secrets, set it as an environment variable, or enter it in the sidebar.")
+    st.error("Please enter your OpenAI API key in the sidebar to continue.")
     st.stop()
 os.environ["OPENAI_API_KEY"] = api_key
 
