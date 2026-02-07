@@ -370,7 +370,9 @@ if submitted:
         report = cap_500_words(response.content)
 
     report = re.sub(r"(?m)^#+\s*", "", report)
+    
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report)
+    
     report = re.sub(r"(?m)^\s*[-*]\s*", "", report).strip()
 
 
