@@ -122,16 +122,16 @@ def cap_500_words(text: str) -> str:
         return text.strip()
     return " ".join(words[:500]).rstrip() + "…"
 
+# =========================
+# API key handling
+# =========================
 
-# =========================
-# API key handling (require manual entry)
-# =========================
 api_key = (user_key or "").strip()
 if not api_key:
-    st.error("Please enter your OpenAI API key in the sidebar to continue.")
+    st.info("Please enter your OpenAI API key in the sidebar to continue.")
     st.stop()
-os.environ["OPENAI_API_KEY"] = api_key
 
+os.environ["OPENAI_API_KEY"] = api_key
 
 # =========================
 # UI — Q1
