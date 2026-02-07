@@ -1,6 +1,8 @@
 import os
 import re
+from collections import Counter
 import streamlit as st
+import openai
 
 from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
@@ -28,6 +30,16 @@ st.markdown(
         padding: 1.1rem 1.2rem;
         border-radius: 10px;
         border-left: 6px solid #2563EB;
+    }
+    .soft-box {
+        background:#F8FAFC;
+        border:1px solid #E2E8F0;
+        color:#0F172A;
+        padding:14px 16px;
+        border-radius:10px;
+    }
+    .soft-muted {
+        color:#475569;
     }
     code {
         white-space: pre-wrap;
@@ -62,7 +74,16 @@ DEFAULT_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "")).
 api_key = (user_key or "").strip() or DEFAULT_KEY
 
 if not api_key:
-    st.info("Please enter your OpenAI API key in the sidebar to continue.")
+    st.markdown(
+        """
+        <div class="soft-box">
+            <strong>Almost there.</strong>
+            Please enter your OpenAI API key in the sidebar to continue.
+            <span class="soft-muted">It stays on your machine.</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     st.stop()
 
 os.environ["OPENAI_API_KEY"] = api_key
@@ -108,7 +129,6 @@ if submitted:
             docs = retriever.invoke(industry.strip())
         docs = docs[:5]
 
-        # Extract URLs (dedupe)
         urls = []
         seen = set()
         for d in docs:
@@ -121,11 +141,7 @@ if submitted:
         st.error("No Wikipedia pages found. Try a more specific industry term.")
         st.stop()
 
-    with st.expander("Show sources", expanded=True):
-        for u in urls:
-            st.write(u)
-
-    st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
+    st.info("The report and visuals below are generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
     # Step 3 — Industry report
@@ -160,7 +176,8 @@ if submitted:
         "Do NOT use outside knowledge.\n"
         "When you make a factual claim, add a citation in the form [Source #].\n"
         "If the sources do not support a claim, write: 'Not specified in the sources.'\n"
-        "Keep the full report under 500 words."
+        "Keep the full report under 500 words.\n"
+        "Use plain text headings without markdown hashes."
     )
 
     user_prompt = (
@@ -181,13 +198,41 @@ if submitted:
     )
 
     with st.spinner("Generating industry briefing…"):
-        response = llm.invoke(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-        )
-        report = response.content or ""
+        try:
+            response = llm.invoke(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+            )
+            report = response.content or ""
+        except openai.AuthenticationError:
+            st.markdown(
+                """
+                <div class="soft-box">
+                    <strong>We couldn’t verify that key.</strong>
+                    Please double‑check it and try again.
+                    <span class="soft-muted">If you just updated it, refresh the page.</span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            st.stop()
+        except Exception:
+            st.markdown(
+                """
+                <div class="soft-box">
+                    <strong>Small hiccup.</strong>
+                    We couldn’t finish the report just now.
+                    <span class="soft-muted">Please try again in a moment.</span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            st.stop()
+
+    # Remove markdown heading hashes if present
+    report = re.sub(r"(?m)^#+\s*", "", report).strip()
 
     # Cap to 500 words inline
     words = report.split()
@@ -197,11 +242,55 @@ if submitted:
     word_count = len(report.split())
     st.caption(f"Word count: {word_count} / 500")
 
-    st.markdown(
-        f"""
-        <div class="report-box">
-        {report.replace("\n", "<br>")}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # Tabs
+    tab_report, tab_visuals, tab_sources = st.tabs(["Report", "Visuals", "Sources"])
+
+    with tab_report:
+        st.markdown(
+            f"""
+            <div class="report-box">
+            {report.replace("\n", "<br>")}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with tab_visuals:
+        st.markdown("<div class='subtle'>Visuals derived from the Wikipedia source excerpts.</div>", unsafe_allow_html=True)
+
+        # Visual 1: Source coverage by excerpt length
+        titles = [(d.metadata or {}).get("title", f"Source {i+1}") for i, d in enumerate(docs)]
+        lengths = [len((d.page_content or "")) for d in docs]
+        st.markdown("<div class='blue-accent'>Source Coverage (Excerpt Length)</div>", unsafe_allow_html=True)
+        st.bar_chart({"Source": titles, "Excerpt length": lengths}, x="Source", y="Excerpt length")
+
+        # Visual 2: Top terms across sources
+        all_text = " ".join((d.page_content or "") for d in docs)
+        tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", all_text.lower())
+        stop = {
+            "the","and","for","with","that","this","from","are","was","were","has","have",
+            "had","its","their","which","into","also","such","than","over","under","between",
+            "about","after","before","these","those","other","more","most","used","use","using",
+            "industry","market","company","companies","products","product"
+        }
+        counts = Counter(t for t in tokens if t not in stop)
+        top_terms = counts.most_common(8)
+        if top_terms:
+            terms = [t[0].title() for t in top_terms]
+            values = [t[1] for t in top_terms]
+            st.markdown("<div class='blue-accent'>Top Topics Mentioned</div>", unsafe_allow_html=True)
+            st.bar_chart({"Topic": terms, "Mentions": values}, x="Topic", y="Mentions")
+        else:
+            st.caption("Not enough text to extract key topics.")
+
+        # Visual 3: Relative coverage index (derived from sources)
+        if lengths:
+            total = sum(lengths)
+            share = [round((l / total) * 100, 2) if total else 0 for l in lengths]
+            st.markdown("<div class='blue-accent'>Relative Coverage Index (Derived)</div>", unsafe_allow_html=True)
+            st.area_chart({"Source": titles, "Coverage %": share}, x="Source", y="Coverage %")
+            st.caption("Derived from excerpt lengths to show relative coverage per source.")
+
+    with tab_sources:
+        for u in urls:
+            st.write(u)
