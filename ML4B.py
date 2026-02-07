@@ -149,6 +149,8 @@ def cap_500_words(text: str) -> str:
 # =========================
 # External data helpers (free sources)
 # =========================
+WIKIDATA_HEADERS = {"Accept": "application/json", "User-Agent": "MarketResearchAssistant/1.0"}
+
 def wikidata_find_industry_qid(industry_label: str) -> str:
     url = "https://www.wikidata.org/w/api.php"
     params = {
@@ -159,7 +161,7 @@ def wikidata_find_industry_qid(industry_label: str) -> str:
         "limit": 1,
     }
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=10, headers=WIKIDATA_HEADERS)
         data = r.json()
         if data.get("search"):
             return data["search"][0]["id"]
@@ -184,7 +186,62 @@ def wikidata_companies_by_industry(industry_qid: str, limit: int = 40):
     LIMIT {limit}
     """
     url = "https://query.wikidata.org/sparql"
-    headers = {"Accept": "application/sparql-results+json"}
+    headers = {"Accept": "application/sparql-results+json", "User-Agent": "MarketResearchAssistant/1.0"}
+    rows = []
+    try:
+        r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
+        data = r.json()
+        for b in data["results"]["bindings"]:
+            rows.append(
+                {
+                    "company": b.get("companyLabel", {}).get("value", ""),
+                    "country": b.get("countryLabel", {}).get("value", "Unknown"),
+                    "iso2": b.get("iso2", {}).get("value", ""),
+                    "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
+                    "inception": b.get("inception", {}).get("value", ""),
+                }
+            )
+    except Exception:
+        return []
+    return rows
+
+
+def wikidata_search_companies(industry_label: str, limit: int = 20):
+    url = "https://www.wikidata.org/w/api.php"
+    params = {
+        "action": "wbsearchentities",
+        "search": f"{industry_label} company",
+        "language": "en",
+        "format": "json",
+        "limit": limit,
+    }
+    try:
+        r = requests.get(url, params=params, timeout=10, headers=WIKIDATA_HEADERS)
+        data = r.json()
+        return [item["id"] for item in data.get("search", [])]
+    except Exception:
+        return []
+
+
+def wikidata_get_company_details(qids):
+    if not qids:
+        return []
+    ids = " ".join(f"wd:{qid}" for qid in qids)
+    query = f"""
+    SELECT ?company ?companyLabel ?countryLabel ?iso2 ?sitelinks ?inception WHERE {{
+      VALUES ?company {{ {ids} }}
+      ?company wdt:P31/wdt:P279* wd:Q4830453 .
+      OPTIONAL {{ ?company wdt:P159 ?hq . ?hq wdt:P17 ?hqCountry . }}
+      OPTIONAL {{ ?company wdt:P17 ?country . }}
+      BIND(COALESCE(?hqCountry, ?country) AS ?countryFinal)
+      OPTIONAL {{ ?countryFinal wdt:P297 ?iso2 . }}
+      OPTIONAL {{ ?company wikibase:sitelinks ?sitelinks . }}
+      OPTIONAL {{ ?company wdt:P571 ?inception . }}
+      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+    }}
+    """
+    url = "https://query.wikidata.org/sparql"
+    headers = {"Accept": "application/sparql-results+json", "User-Agent": "MarketResearchAssistant/1.0"}
     rows = []
     try:
         r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
@@ -364,9 +421,12 @@ if submitted:
     companies = wikidata_companies_by_industry(industry_qid, limit=60) if industry_qid else []
 
     if not companies:
+        qids = wikidata_search_companies(industry.strip(), limit=20)
+        companies = wikidata_get_company_details(qids)
+
+    if not companies:
         st.info("External company data could not be retrieved for this industry.")
     else:
-        # Top companies by Wikidata prominence (sitelinks)
         top_companies = sorted(
             [c for c in companies if c["company"]],
             key=lambda x: x.get("sitelinks", 0),
@@ -381,7 +441,6 @@ if submitted:
             )
             st.caption("Prominence proxy based on Wikipedia sitelinks per company.")
 
-        # HQ country distribution
         country_counts = {}
         for c in companies:
             country = c.get("country") or "Unknown"
@@ -395,7 +454,6 @@ if submitted:
                 y="Count",
             )
 
-        # Founding decades
         years = []
         for c in companies:
             val = c.get("inception", "")
@@ -415,7 +473,7 @@ if submitted:
                 y="Count",
             )
 
-        # World Bank macro context for HQ countries
+        # World Bank sector mix for HQ countries
         iso2_seen = set()
         macro_rows = []
         for c in companies:
@@ -423,8 +481,13 @@ if submitted:
             if not iso2 or iso2 in iso2_seen:
                 continue
             iso2_seen.add(iso2)
+
             gdp = worldbank_latest_indicator(iso2, "NY.GDP.MKTP.CD")
             pop = worldbank_latest_indicator(iso2, "SP.POP.TOTL")
+            manuf = worldbank_latest_indicator(iso2, "NV.IND.MANF.ZS")
+            serv = worldbank_latest_indicator(iso2, "NV.SRV.TETC.ZS")
+            agr = worldbank_latest_indicator(iso2, "NV.AGR.TOTL.ZS")
+
             if gdp and pop:
                 macro_rows.append(
                     {
@@ -432,6 +495,9 @@ if submitted:
                         "gdp": gdp["value"],
                         "pop": pop["value"],
                         "year": gdp["year"],
+                        "manuf": manuf["value"] if manuf else None,
+                        "serv": serv["value"] if serv else None,
+                        "agr": agr["value"] if agr else None,
                     }
                 )
             if len(macro_rows) >= 8:
@@ -444,8 +510,6 @@ if submitted:
                 x="Country",
                 y="GDP (current US$)",
             )
-            latest_year = max(str(r["year"]) for r in macro_rows)
-            st.caption(f"GDP (current US$), latest available year per country (max year shown: {latest_year}).")
 
             st.markdown("<div class='blue-accent'>HQ Country Population (World Bank)</div>", unsafe_allow_html=True)
             st.bar_chart(
@@ -453,3 +517,16 @@ if submitted:
                 x="Country",
                 y="Population",
             )
+
+            sector_rows = [r for r in macro_rows if r["manuf"] or r["serv"] or r["agr"]]
+            if sector_rows:
+                st.markdown("<div class='blue-accent'>Sector Mix (% of GDP, World Bank)</div>", unsafe_allow_html=True)
+                st.bar_chart(
+                    {
+                        "Country": [r["country"] for r in sector_rows],
+                        "Manufacturing %": [r["manuf"] or 0 for r in sector_rows],
+                        "Services %": [r["serv"] or 0 for r in sector_rows],
+                        "Agriculture %": [r["agr"] or 0 for r in sector_rows],
+                    },
+                    x="Country",
+                )
