@@ -7,13 +7,10 @@ from langchain_openai import ChatOpenAI
 
 
 # =========================
-# Page config
+# Page config + styling
 # =========================
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
-# =========================
-# Blue accent styling (light + consistent)
-# =========================
 st.markdown(
     """
     <style>
@@ -44,7 +41,7 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key input (masked + show toggle)
+# Sidebar: API Key + settings
 # =========================
 st.sidebar.header("API Key")
 st.sidebar.write("Enter your OpenAI API key to run the report.")
@@ -54,87 +51,28 @@ user_key = st.sidebar.text_input(
     type="default" if show_key else "password"
 )
 
-# =========================
-# Sidebar: Model settings
-# =========================
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
-# Helper functions
-# =========================
-def industry_is_valid(industry: str) -> bool:
-    return bool(industry and industry.strip())
-
-
-def retrieve_wikipedia_docs(industry: str, k: int = 5):
-    retriever = WikipediaRetriever(top_k_results=k, lang="en")
-    try:
-        docs = retriever.get_relevant_documents(industry)
-    except AttributeError:
-        docs = retriever.invoke(industry)
-    return docs[:k]
-
-
-def extract_urls(docs):
-    urls = []
-    for d in docs:
-        src = (d.metadata or {}).get("source", "")
-        if src:
-            urls.append(src)
-
-    # De-duplicate while preserving order
-    seen = set()
-    unique = []
-    for u in urls:
-        if u not in seen:
-            unique.append(u)
-            seen.add(u)
-
-    return unique[:5]
-
-
-def build_sources_text(docs) -> str:
-    """
-    Build context ONLY from the retrieved Wikipedia pages.
-    We number sources so the model can cite like [Source 1].
-    """
-    parts = []
-    for i, d in enumerate(docs, start=1):
-        title = (d.metadata or {}).get("title", f"Source {i}")
-        url = (d.metadata or {}).get("source", "")
-        text = (d.page_content or "").strip()
-        text = re.sub(r"\s+", " ", text)
-        text = text[:2600]  # bounded context per source
-
-        parts.append(
-            f"[Source {i}]\n"
-            f"TITLE: {title}\n"
-            f"URL: {url}\n"
-            f"CONTENT EXCERPT: {text}\n"
-        )
-    return "\n\n".join(parts)
-
-
-def cap_500_words(text: str) -> str:
-    words = (text or "").split()
-    if len(words) <= 500:
-        return text.strip()
-    return " ".join(words[:500]).rstrip() + "…"
-
-# =========================
 # API key handling
 # =========================
+ALLOWED_KEY = st.secrets.get("ALLOWED_API_KEY", "").strip()
 
 api_key = (user_key or "").strip()
 if not api_key:
     st.info("Please enter your OpenAI API key in the sidebar to continue.")
     st.stop()
 
+if ALLOWED_KEY and api_key != ALLOWED_KEY:
+    st.info("This app is restricted to the authorized API key.")
+    st.stop()
+
 os.environ["OPENAI_API_KEY"] = api_key
 
+
 # =========================
-# UI — Q1
+# UI — Step 1
 # =========================
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
@@ -150,15 +88,14 @@ with st.form("industry_form"):
     submitted = st.form_submit_button("Generate report")
 
 if submitted:
-    # Q1 validation
-    if not industry_is_valid(industry):
+    if not industry or not industry.strip():
         st.warning("Please enter an industry to continue.")
         st.stop()
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
     # =========================
-    # Q2 — URLs of five most relevant Wikipedia pages
+    # Step 2 — Wikipedia sources
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -167,8 +104,21 @@ if submitted:
     )
 
     with st.spinner("Retrieving the five most relevant Wikipedia pages…"):
-        docs = retrieve_wikipedia_docs(industry.strip(), k=5)
-        urls = extract_urls(docs)
+        retriever = WikipediaRetriever(top_k_results=5, lang="en")
+        try:
+            docs = retriever.get_relevant_documents(industry.strip())
+        except AttributeError:
+            docs = retriever.invoke(industry.strip())
+        docs = docs[:5]
+
+        # Extract URLs (dedupe)
+        urls = []
+        seen = set()
+        for d in docs:
+            src = (d.metadata or {}).get("source", "")
+            if src and src not in seen:
+                urls.append(src)
+                seen.add(src)
 
     if not urls:
         st.error("No Wikipedia pages found. Try a more specific industry term.")
@@ -181,7 +131,7 @@ if submitted:
     st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
-    # Q3 — Industry report (<500 words), based on those five pages
+    # Step 3 — Industry report
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -189,11 +139,23 @@ if submitted:
         unsafe_allow_html=True
     )
 
-    sources_text = build_sources_text(docs)
+    # Build sources text inline
+    parts = []
+    for i, d in enumerate(docs, start=1):
+        title = (d.metadata or {}).get("title", f"Source {i}")
+        url = (d.metadata or {}).get("source", "")
+        text = (d.page_content or "").strip()
+        text = re.sub(r"\s+", " ", text)[:2600]
+        parts.append(
+            f"[Source {i}]\n"
+            f"TITLE: {title}\n"
+            f"URL: {url}\n"
+            f"CONTENT EXCERPT: {text}\n"
+        )
+    sources_text = "\n\n".join(parts)
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
-    # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
         "The analyst is evaluating a potential acquisition target in this industry.\n"
@@ -228,7 +190,12 @@ if submitted:
                 {"role": "user", "content": user_prompt},
             ]
         )
-        report = cap_500_words(response.content)
+        report = response.content or ""
+
+    # Cap to 500 words inline
+    words = report.split()
+    if len(words) > 500:
+        report = " ".join(words[:500]).rstrip() + "…"
 
     word_count = len(report.split())
     st.caption(f"Word count: {word_count} / 500")
@@ -241,5 +208,3 @@ if submitted:
         """,
         unsafe_allow_html=True
     )
-
-
