@@ -1,8 +1,13 @@
 import os
 import re
+import io
+import numpy as np
+import pandas as pd
 import streamlit as st
 import requests
 import openai
+import altair as alt
+from sklearn.cluster import KMeans
 
 from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
@@ -66,6 +71,10 @@ user_key = st.sidebar.text_input(
 
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
+
+st.sidebar.header("Data (CSV optional)")
+uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
+k_clusters = st.sidebar.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
 
 # =========================
 # API key handling (default + allow override)
@@ -147,10 +156,33 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
+# Clustering helpers
+# =========================
+def make_synthetic_dataset(industry: str, n: int = 120) -> pd.DataFrame:
+    seed = abs(hash(industry)) % (2**32)
+    rng = np.random.default_rng(seed)
+    data = {
+        "company": [f"{industry.title()} Co {i+1}" for i in range(n)],
+        "revenue_growth": rng.normal(8, 5, n).clip(-10, 30),
+        "ebitda_margin": rng.normal(18, 7, n).clip(0, 45),
+        "market_share": rng.normal(3, 2, n).clip(0.1, 15),
+        "debt_to_equity": rng.normal(1.2, 0.7, n).clip(0, 5),
+        "capex_intensity": rng.normal(6, 3, n).clip(0.5, 18),
+    }
+    return pd.DataFrame(data)
+
+
+def prepare_for_kmeans(df: pd.DataFrame):
+    numeric_df = df.select_dtypes(include=["number"]).copy()
+    if numeric_df.shape[1] < 2:
+        return None, None
+    scaled = (numeric_df - numeric_df.mean()) / (numeric_df.std(ddof=0) + 1e-9)
+    return numeric_df, scaled
+
+
+# =========================
 # External data helpers (free sources)
 # =========================
-WIKIDATA_HEADERS = {"Accept": "application/json", "User-Agent": "MarketResearchAssistant/1.0"}
-
 def wikidata_find_industry_qid(industry_label: str) -> str:
     url = "https://www.wikidata.org/w/api.php"
     params = {
@@ -161,7 +193,7 @@ def wikidata_find_industry_qid(industry_label: str) -> str:
         "limit": 1,
     }
     try:
-        r = requests.get(url, params=params, timeout=10, headers=WIKIDATA_HEADERS)
+        r = requests.get(url, params=params, timeout=10)
         data = r.json()
         if data.get("search"):
             return data["search"][0]["id"]
@@ -186,62 +218,7 @@ def wikidata_companies_by_industry(industry_qid: str, limit: int = 40):
     LIMIT {limit}
     """
     url = "https://query.wikidata.org/sparql"
-    headers = {"Accept": "application/sparql-results+json", "User-Agent": "MarketResearchAssistant/1.0"}
-    rows = []
-    try:
-        r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
-        data = r.json()
-        for b in data["results"]["bindings"]:
-            rows.append(
-                {
-                    "company": b.get("companyLabel", {}).get("value", ""),
-                    "country": b.get("countryLabel", {}).get("value", "Unknown"),
-                    "iso2": b.get("iso2", {}).get("value", ""),
-                    "sitelinks": int(float(b.get("sitelinks", {}).get("value", "0"))),
-                    "inception": b.get("inception", {}).get("value", ""),
-                }
-            )
-    except Exception:
-        return []
-    return rows
-
-
-def wikidata_search_companies(industry_label: str, limit: int = 20):
-    url = "https://www.wikidata.org/w/api.php"
-    params = {
-        "action": "wbsearchentities",
-        "search": f"{industry_label} company",
-        "language": "en",
-        "format": "json",
-        "limit": limit,
-    }
-    try:
-        r = requests.get(url, params=params, timeout=10, headers=WIKIDATA_HEADERS)
-        data = r.json()
-        return [item["id"] for item in data.get("search", [])]
-    except Exception:
-        return []
-
-
-def wikidata_get_company_details(qids):
-    if not qids:
-        return []
-    ids = " ".join(f"wd:{qid}" for qid in qids)
-    query = f"""
-    SELECT ?company ?companyLabel ?countryLabel ?iso2 ?sitelinks ?inception WHERE {{
-      VALUES ?company {{ {ids} }}
-      ?company wdt:P31/wdt:P279* wd:Q4830453 .
-      OPTIONAL {{ ?company wdt:P159 ?hq . ?hq wdt:P17 ?hqCountry . }}
-      OPTIONAL {{ ?company wdt:P17 ?country . }}
-      BIND(COALESCE(?hqCountry, ?country) AS ?countryFinal)
-      OPTIONAL {{ ?countryFinal wdt:P297 ?iso2 . }}
-      OPTIONAL {{ ?company wikibase:sitelinks ?sitelinks . }}
-      OPTIONAL {{ ?company wdt:P571 ?inception . }}
-      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-    }}
-    """
-    url = "https://query.wikidata.org/sparql"
-    headers = {"Accept": "application/sparql-results+json", "User-Agent": "MarketResearchAssistant/1.0"}
+    headers = {"Accept": "application/sparql-results+json"}
     rows = []
     try:
         r = requests.get(url, params={"query": query}, headers=headers, timeout=20)
@@ -420,13 +397,7 @@ if submitted:
     industry_qid = wikidata_find_industry_qid(industry.strip())
     companies = wikidata_companies_by_industry(industry_qid, limit=60) if industry_qid else []
 
-    if not companies:
-        qids = wikidata_search_companies(industry.strip(), limit=20)
-        companies = wikidata_get_company_details(qids)
-
-    if not companies:
-        st.info("External company data could not be retrieved for this industry.")
-    else:
+    if companies:
         top_companies = sorted(
             [c for c in companies if c["company"]],
             key=lambda x: x.get("sitelinks", 0),
@@ -441,92 +412,46 @@ if submitted:
             )
             st.caption("Prominence proxy based on Wikipedia sitelinks per company.")
 
-        country_counts = {}
-        for c in companies:
-            country = c.get("country") or "Unknown"
-            country_counts[country] = country_counts.get(country, 0) + 1
-        top_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-        if top_countries:
-            st.markdown("<div class='blue-accent'>Company HQ by Country (Wikidata)</div>", unsafe_allow_html=True)
-            st.bar_chart(
-                {"Country": [c[0] for c in top_countries], "Count": [c[1] for c in top_countries]},
-                x="Country",
-                y="Count",
-            )
+    # =========================
+    # K-means Clustering (CSV or Synthetic)
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Upload a CSV in the sidebar or use the synthetic dataset generated from the industry name.</div>",
+        unsafe_allow_html=True
+    )
 
-        years = []
-        for c in companies:
-            val = c.get("inception", "")
-            m = re.search(r"^(\d{4})", str(val))
-            if m:
-                years.append(int(m.group(1)))
-        if years:
-            decades = {}
-            for y in years:
-                d = f"{(y // 10) * 10}s"
-                decades[d] = decades.get(d, 0) + 1
-            decades_sorted = sorted(decades.items(), key=lambda x: x[0])[:12]
-            st.markdown("<div class='blue-accent'>Company Founding Decades</div>", unsafe_allow_html=True)
-            st.bar_chart(
-                {"Decade": [d[0] for d in decades_sorted], "Count": [d[1] for d in decades_sorted]},
-                x="Decade",
-                y="Count",
-            )
+    if uploaded_csv is not None:
+        try:
+            raw = uploaded_csv.getvalue().decode("utf-8")
+            df = pd.read_csv(io.StringIO(raw))
+        except Exception:
+            st.warning("Could not read the CSV. Please upload a valid CSV file.")
+            df = None
+    else:
+        df = make_synthetic_dataset(industry.strip())
 
-        # World Bank sector mix for HQ countries
-        iso2_seen = set()
-        macro_rows = []
-        for c in companies:
-            iso2 = (c.get("iso2") or "").strip()
-            if not iso2 or iso2 in iso2_seen:
-                continue
-            iso2_seen.add(iso2)
+    if df is not None:
+        numeric_df, scaled = prepare_for_kmeans(df)
+        if numeric_df is None:
+            st.warning("CSV needs at least two numeric columns for clustering.")
+        else:
+            km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+            clusters = km.fit_predict(scaled)
+            df_plot = numeric_df.copy()
+            df_plot["cluster"] = clusters.astype(str)
 
-            gdp = worldbank_latest_indicator(iso2, "NY.GDP.MKTP.CD")
-            pop = worldbank_latest_indicator(iso2, "SP.POP.TOTL")
-            manuf = worldbank_latest_indicator(iso2, "NV.IND.MANF.ZS")
-            serv = worldbank_latest_indicator(iso2, "NV.SRV.TETC.ZS")
-            agr = worldbank_latest_indicator(iso2, "NV.AGR.TOTL.ZS")
-
-            if gdp and pop:
-                macro_rows.append(
-                    {
-                        "country": c.get("country") or iso2,
-                        "gdp": gdp["value"],
-                        "pop": pop["value"],
-                        "year": gdp["year"],
-                        "manuf": manuf["value"] if manuf else None,
-                        "serv": serv["value"] if serv else None,
-                        "agr": agr["value"] if agr else None,
-                    }
+            x_col, y_col = numeric_df.columns[:2]
+            chart = (
+                alt.Chart(df_plot)
+                .mark_circle(size=70, opacity=0.8)
+                .encode(
+                    x=alt.X(x_col, title=x_col),
+                    y=alt.Y(y_col, title=y_col),
+                    color=alt.Color("cluster:N", title="Cluster"),
+                    tooltip=[x_col, y_col, "cluster"],
                 )
-            if len(macro_rows) >= 8:
-                break
-
-        if macro_rows:
-            st.markdown("<div class='blue-accent'>HQ Country GDP (World Bank)</div>", unsafe_allow_html=True)
-            st.bar_chart(
-                {"Country": [r["country"] for r in macro_rows], "GDP (current US$)": [r["gdp"] for r in macro_rows]},
-                x="Country",
-                y="GDP (current US$)",
             )
+            st.altair_chart(chart, use_container_width=True)
 
-            st.markdown("<div class='blue-accent'>HQ Country Population (World Bank)</div>", unsafe_allow_html=True)
-            st.bar_chart(
-                {"Country": [r["country"] for r in macro_rows], "Population": [r["pop"] for r in macro_rows]},
-                x="Country",
-                y="Population",
-            )
-
-            sector_rows = [r for r in macro_rows if r["manuf"] or r["serv"] or r["agr"]]
-            if sector_rows:
-                st.markdown("<div class='blue-accent'>Sector Mix (% of GDP, World Bank)</div>", unsafe_allow_html=True)
-                st.bar_chart(
-                    {
-                        "Country": [r["country"] for r in sector_rows],
-                        "Manufacturing %": [r["manuf"] or 0 for r in sector_rows],
-                        "Services %": [r["serv"] or 0 for r in sector_rows],
-                        "Agriculture %": [r["agr"] or 0 for r in sector_rows],
-                    },
-                    x="Country",
-                )
+            st.caption("Clusters are based on numeric columns only. Non-numeric columns are ignored.")
