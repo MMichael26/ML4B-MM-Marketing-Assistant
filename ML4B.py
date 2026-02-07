@@ -40,16 +40,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("Market Research Assistant (Wikipedia-grounded)")
-st.caption("Designed for a business analyst: quick industry briefing grounded in retrieved Wikipedia sources.")
-
-# =========================
-# Local Development (VS Code) instructions
-# =========================
-st.markdown("<h3 class='blue-accent'>Step 2 — Local Development (VS Code)</h3>", unsafe_allow_html=True)
-st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
-st.code('export OPENAI_API_KEY="sk-..."', language="bash")
+st.title("Market Research Assistant")
+st.caption("Designed for a quick industry briefing g.")
 
 # =========================
 # Sidebar: API Key input (masked + show toggle)
@@ -61,6 +53,12 @@ user_key = st.sidebar.text_input(
     "OpenAI API Key",
     type="default" if show_key else "password"
 )
+
+# =========================
+# Sidebar: Model settings
+# =========================
+st.sidebar.header("Model Settings")
+temperature = st.sidebar.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
 # Helper functions
@@ -135,7 +133,7 @@ os.environ["OPENAI_API_KEY"] = api_key
 # =========================
 # UI — Q1
 # =========================
-st.markdown("<h3 class='blue-accent'>Q1 — Step 1: Provide an industry</h3>", unsafe_allow_html=True)
+st.markdown("<h3 class='blue-accent'>Provide an industry</h3>", unsafe_allow_html=True)
 st.markdown(
     "<div class='subtle'>The assistant checks an industry is provided. If not, it requests an update.</div>",
     unsafe_allow_html=True
@@ -154,7 +152,7 @@ if st.button("Run"):
     # =========================
     # Q2 — URLs of five most relevant Wikipedia pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Q2 — Step 2: Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Top 5 Wikipedia URLs</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>The assistant retrieves Wikipedia pages and returns the URLs for the five most relevant.</div>",
         unsafe_allow_html=True
@@ -176,7 +174,7 @@ if st.button("Run"):
     # =========================
     # Q3 — Industry report (<500 words), based on those five pages
     # =========================
-    st.markdown("<h3 class='blue-accent'>Q3 — Step 3: Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Industry report (<500 words) based on the 5 pages</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
         unsafe_allow_html=True
@@ -184,7 +182,7 @@ if st.button("Run"):
 
     sources_text = build_sources_text(docs)
 
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
     # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
@@ -234,4 +232,5 @@ if st.button("Run"):
         """,
         unsafe_allow_html=True
     )
+
 
