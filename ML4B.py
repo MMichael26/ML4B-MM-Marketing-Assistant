@@ -58,6 +58,14 @@ st.markdown(
 st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
+# =========================
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
 
 # =========================
 # Sidebar: API Key input (masked + show toggle)
@@ -123,7 +131,6 @@ def extract_urls(docs):
         if src:
             urls.append(src)
 
-    # De-duplicate while preserving order
     seen = set()
     unique = []
     for u in urls:
@@ -135,17 +142,13 @@ def extract_urls(docs):
 
 
 def build_sources_text(docs) -> str:
-    """
-    Build context ONLY from the retrieved Wikipedia pages.
-    We number sources so the model can cite like [Source 1].
-    """
     parts = []
     for i, d in enumerate(docs, start=1):
         title = (d.metadata or {}).get("title", f"Source {i}")
         url = (d.metadata or {}).get("source", "")
         text = (d.page_content or "").strip()
         text = re.sub(r"\s+", " ", text)
-        text = text[:2600]  # bounded context per source
+        text = text[:2600]
 
         parts.append(
             f"[Source {i}]\n"
@@ -468,6 +471,82 @@ def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
     data = [row_fn(i) for i in range(1, rows + 1)]
     return pd.DataFrame(data, columns=columns)
 
+
+def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
+    enriched = df.copy()
+    seed = abs(hash(industry)) % (2**32)
+    rng = random.Random(seed)
+
+    if "brand" in enriched.columns:
+        enriched["company"] = enriched["brand"]
+    elif "provider" in enriched.columns:
+        enriched["company"] = enriched["provider"]
+    elif "entity" in enriched.columns:
+        enriched["company"] = enriched["entity"]
+    else:
+        enriched["company"] = [f"{industry.title()} Co {i+1}" for i in range(len(enriched))]
+
+    if "segment" in enriched.columns:
+        enriched["segment"] = enriched["segment"]
+    elif "category" in enriched.columns:
+        enriched["segment"] = enriched["category"]
+    elif "product_type" in enriched.columns:
+        enriched["segment"] = enriched["product_type"]
+    elif "mode" in enriched.columns:
+        enriched["segment"] = enriched["mode"]
+    else:
+        enriched["segment"] = "General"
+
+    if "region" not in enriched.columns:
+        enriched["region"] = rng.choices(
+            ["NA", "EU", "APAC", "LATAM", "MEA"],
+            weights=[0.35, 0.25, 0.25, 0.1, 0.05],
+            k=len(enriched),
+        )
+
+    companies = sorted(enriched["company"].unique().tolist())
+    base = [rng.uniform(0.5, 8.0) for _ in companies]
+    scale = 100.0 / sum(base)
+    share_map = {c: round(b * scale, 2) for c, b in zip(companies, base)}
+    enriched["market_share_pct"] = enriched["company"].map(share_map)
+
+    rev_base = {c: rng.lognormvariate(3.2, 0.6) * 10 for c in companies}
+    enriched["revenue_usd_m"] = [
+        round(rev_base[c] * rng.uniform(0.7, 1.3), 2) for c in enriched["company"]
+    ]
+
+    enriched["revenue_growth_pct"] = [
+        round(rng.uniform(-8, 25), 2) for _ in range(len(enriched))
+    ]
+    enriched["ebitda_margin_pct"] = [
+        round(rng.uniform(5, 38), 2) for _ in range(len(enriched))
+    ]
+    enriched["capex_intensity_pct"] = [
+        round(rng.uniform(2, 18), 2) for _ in range(len(enriched))
+    ]
+    enriched["debt_to_equity"] = [
+        round(rng.uniform(0.0, 3.5), 2) for _ in range(len(enriched))
+    ]
+
+    enriched["supply_concentration"] = [
+        round(rng.uniform(0.1, 0.9), 2) for _ in range(len(enriched))
+    ]
+    enriched["risk_score"] = [
+        round(
+            0.35 * (1 - min(1, g / 30)) +
+            0.35 * min(1, d / 3.5) +
+            0.30 * s,
+            2
+        )
+        for g, d, s in zip(
+            enriched["revenue_growth_pct"],
+            enriched["debt_to_equity"],
+            enriched["supply_concentration"],
+        )
+    ]
+
+    return enriched
+
 # =========================
 # Report analysis helpers
 # =========================
@@ -489,7 +568,6 @@ def split_report_sections(report_text: str):
 
 
 def section_confidence_score(section_text: str):
-    # Heuristic: combine length and citation density
     words = section_text.split()
     word_count = max(1, len(words))
     citations = len(re.findall(r"\[Source\s+\d+\]", section_text))
@@ -505,7 +583,6 @@ def prepare_for_kmeans(df: pd.DataFrame):
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.shape[1] < 2:
         return None, None
-    # z-score scaling
     scaled = (numeric_df - numeric_df.mean()) / (numeric_df.std(ddof=0) + 1e-9)
     return numeric_df, scaled
 
@@ -553,16 +630,12 @@ with st.form("industry_form"):
     submitted = st.form_submit_button("Generate report")
 
 if submitted:
-    # Q1 validation
     if not industry_is_valid(industry):
         st.warning("Please enter an industry to continue.")
         st.stop()
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
-    # =========================
-    # Q2 — URLs of five most relevant Wikipedia pages
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
@@ -593,9 +666,6 @@ if submitted:
 
     st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
-    # =========================
-    # Q3 — Industry report (<500 words), based on those five pages
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
@@ -606,7 +676,6 @@ if submitted:
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
-    # BA-brief prompt + explicit grounding + source citations
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
         "The analyst is evaluating a potential acquisition target in this industry.\n"
@@ -645,7 +714,6 @@ if submitted:
         )
         report = cap_500_words(response.content)
 
-    # Remove markdown heading hashes if present
     report = re.sub(r"(?m)^#+\s*", "", report)
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report)
     report = re.sub(r"(?m)^\s*[-*]\s*", "", report).strip()
@@ -662,9 +730,6 @@ if submitted:
         unsafe_allow_html=True
     )
 
-    # =========================
-    # Confidence scoring by section
-    # =========================
     st.markdown("<h3 class='blue-accent'>Section Confidence Scores</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Heuristic confidence based on section length and citation density.</div>",
@@ -696,16 +761,14 @@ if submitted:
     else:
         st.caption("Could not detect section headings for confidence scoring.")
 
-    # =========================
-    # Visuals — synthetic dataset (analyst-friendly)
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Analyst-Useful Visuals</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>A synthetic dataset is generated from the industry name and used to create analyst-friendly visuals.</div>",
+        "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
         unsafe_allow_html=True
     )
 
-    synthetic_df = generate_synthetic_df(industry.strip(), rows=200)
+    synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
+    synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
     csv_buffer = io.StringIO()
     synthetic_df.to_csv(csv_buffer, index=False)
@@ -716,147 +779,152 @@ if submitted:
         mime="text/csv",
     )
 
-    # Only render enhanced visuals if expected columns exist
     required_cols = {
-        "price_usd", "co2_kg", "water_l", "recycled_pct",
-        "brand", "material", "production_country"
+        "company","segment","region","market_share_pct","revenue_usd_m",
+        "revenue_growth_pct","ebitda_margin_pct","capex_intensity_pct",
+        "debt_to_equity","risk_score","supply_concentration"
     }
     if required_cols.issubset(set(synthetic_df.columns)):
-        # Price distribution
-        st.markdown("<div class='blue-accent'>Price Distribution</div>", unsafe_allow_html=True)
-        st.write("Shows how product prices are distributed across the synthetic catalog.")
-        hist = (
-            alt.Chart(synthetic_df)
-            .mark_bar()
-            .encode(
-                alt.X("price_usd:Q", bin=alt.Bin(maxbins=20), title="Price (USD)"),
-                alt.Y("count()", title="Count"),
-            )
-        )
-        st.altair_chart(hist, use_container_width=True)
-
-        # Avg price by brand
-        st.markdown("<div class='blue-accent'>Average Price by Brand</div>", unsafe_allow_html=True)
-        st.write("Compares brand positioning based on average price level.")
-        avg_price = (
-            synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
-            .sort_values("price_usd", ascending=False)
+        st.markdown("<div class='blue-accent'>Market Share (Top Companies)</div>", unsafe_allow_html=True)
+        st.write("Highlights concentration and relative scale among leading companies.")
+        share = (
+            synthetic_df.groupby("company", as_index=False)["market_share_pct"].mean()
+            .sort_values("market_share_pct", ascending=False)
+            .head(10)
         )
         st.altair_chart(
-            alt.Chart(avg_price)
+            alt.Chart(share)
             .mark_bar()
             .encode(
-                x=alt.X("brand:N", sort="-y", title="Brand"),
-                y=alt.Y("price_usd:Q", title="Avg Price (USD)"),
-                tooltip=["brand", alt.Tooltip("price_usd:Q", format=".2f")],
+                x=alt.X("company:N", sort="-y", title="Company"),
+                y=alt.Y("market_share_pct:Q", title="Market Share (%)"),
+                tooltip=["company", alt.Tooltip("market_share_pct:Q", format=".2f")],
             ),
             use_container_width=True,
         )
 
-        # CO2 vs price (trendline)
-        st.markdown("<div class='blue-accent'>CO₂ vs Price (Environmental Cost Proxy)</div>", unsafe_allow_html=True)
-        st.write("Highlights whether higher prices correlate with higher (or lower) CO₂ impact.")
-        scatter = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=60, opacity=0.6)
-            .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
-                tooltip=["brand", "price_usd", "co2_kg"],
-            )
+        st.markdown("<div class='blue-accent'>Growth vs EBITDA Margin (Acquisition Lens)</div>", unsafe_allow_html=True)
+        st.write("Positions companies by growth and profitability; top-right is most attractive.")
+        gm = synthetic_df.groupby("company", as_index=False)[
+            ["revenue_growth_pct","ebitda_margin_pct","market_share_pct"]
+        ].mean()
+        vline = gm["revenue_growth_pct"].median()
+        hline = gm["ebitda_margin_pct"].median()
+        base = alt.Chart(gm).mark_circle(size=80, opacity=0.7).encode(
+            x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
+            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+            size=alt.Size("market_share_pct:Q", title="Market Share"),
+            tooltip=["company", "revenue_growth_pct", "ebitda_margin_pct", "market_share_pct"],
         )
-        trend = scatter.transform_regression("price_usd", "co2_kg").mark_line(color="#2563EB")
-        st.altair_chart(scatter + trend, use_container_width=True)
+        lines = (
+            alt.Chart(pd.DataFrame({"x": [vline], "y": [hline]}))
+            .mark_rule(color="#94A3B8")
+            .encode(x="x:Q", y="y:Q")
+        )
+        st.altair_chart(base + lines, use_container_width=True)
 
-        # Production country concentration
-        st.markdown("<div class='blue-accent'>Production Country Concentration</div>", unsafe_allow_html=True)
-        st.write("Shows where production is concentrated in the synthetic dataset, highlighting geographic dependencies.")
-        country_counts = synthetic_df["production_country"].value_counts().reset_index()
-        country_counts.columns = ["country", "count"]
-        st.altair_chart(
-            alt.Chart(country_counts)
+        st.markdown("<div class='blue-accent'>Revenue Distribution</div>", unsafe_allow_html=True)
+        st.write("Shows how revenue is distributed across synthetic companies.")
+        rev = (
+            synthetic_df.groupby("company", as_index=False)["revenue_usd_m"].mean()
+        )
+        rev_chart = (
+            alt.Chart(rev)
             .mark_bar()
             .encode(
-                x=alt.X("country:N", sort="-y", title="Country"),
-                y=alt.Y("count:Q", title="Count"),
-                tooltip=["country", "count"],
-            ),
-            use_container_width=True,
-        )
-
-        # Recycled % by material
-        st.markdown("<div class='blue-accent'>Recycled % by Material</div>", unsafe_allow_html=True)
-        st.write("Compares circularity across materials to identify sustainability leaders.")
-        recycled = (
-            synthetic_df.groupby("material", as_index=False)["recycled_pct"].mean()
-            .sort_values("recycled_pct", ascending=False)
-        )
-        st.altair_chart(
-            alt.Chart(recycled)
-            .mark_bar()
-            .encode(
-                x=alt.X("material:N", sort="-y", title="Material"),
-                y=alt.Y("recycled_pct:Q", title="Avg Recycled %"),
-                tooltip=["material", alt.Tooltip("recycled_pct:Q", format=".1f")],
-            ),
-            use_container_width=True,
-        )
-
-        # Water usage vs price
-        st.markdown("<div class='blue-accent'>Water Usage vs Price</div>", unsafe_allow_html=True)
-        st.write("Shows whether pricing aligns with water intensity in production.")
-        water_scatter = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=60, opacity=0.6)
-            .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("water_l:Q", title="Water (L)"),
-                tooltip=["brand", "price_usd", "water_l"],
+                alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
+                alt.Y("count()", title="Count of Companies"),
             )
         )
-        st.altair_chart(water_scatter, use_container_width=True)
+        st.altair_chart(rev_chart, use_container_width=True)
 
-        # Trend-style clustering on synthetic data
-        st.markdown("<div class='blue-accent'>Synthetic Cluster Map</div>", unsafe_allow_html=True)
-        st.write(
-            "Groups synthetic records into 3 clusters using price, CO₂, water, and recycled content. "
-            "This helps highlight distinct operational profiles within the dataset."
-        )
-        cluster_features = synthetic_df[["price_usd", "co2_kg", "water_l", "recycled_pct"]].copy()
-        cluster_scaled = (cluster_features - cluster_features.mean()) / (cluster_features.std(ddof=0) + 1e-9)
-        km_syn = KMeans(n_clusters=3, n_init=10, random_state=42)
-        synthetic_df["synthetic_cluster"] = km_syn.fit_predict(cluster_scaled).astype(str)
-
-        cluster_chart = (
-            alt.Chart(synthetic_df)
+        st.markdown("<div class='blue-accent'>Capex Intensity vs EBITDA Margin</div>", unsafe_allow_html=True)
+        st.write("Reveals whether higher capex needs are correlated with stronger margins.")
+        cm = synthetic_df.groupby("company", as_index=False)[
+            ["capex_intensity_pct","ebitda_margin_pct"]
+        ].mean()
+        st.altair_chart(
+            alt.Chart(cm)
             .mark_circle(size=70, opacity=0.7)
             .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
-                color=alt.Color("synthetic_cluster:N", title="Cluster"),
-                tooltip=["brand", "price_usd", "co2_kg", "water_l", "recycled_pct", "synthetic_cluster"],
-            )
+                x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
+                y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+                tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
+            ),
+            use_container_width=True,
         )
-        st.altair_chart(cluster_chart, use_container_width=True)
 
-        # Price spread by material (boxplot for variety)
-        st.markdown("<div class='blue-accent'>Price Spread by Material (Boxplot)</div>", unsafe_allow_html=True)
-        st.write("Shows median and variability of prices by material to surface cost dispersion.")
-        box = (
-            alt.Chart(synthetic_df)
-            .mark_boxplot(extent="min-max")
+        st.markdown("<div class='blue-accent'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
+        st.write("Surfaces exposure to concentrated supply chains and combined risk score.")
+        risk = synthetic_df.groupby("company", as_index=False)[
+            ["risk_score","supply_concentration"]
+        ].mean()
+        st.altair_chart(
+            alt.Chart(risk)
+            .mark_circle(size=70, opacity=0.7)
             .encode(
-                x=alt.X("material:N", sort="-y", title="Material"),
-                y=alt.Y("price_usd:Q", title="Price (USD)"),
-            )
+                x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
+                y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
+                tooltip=["company", "supply_concentration", "risk_score"],
+            ),
+            use_container_width=True,
         )
-        st.altair_chart(box, use_container_width=True)
-    else:
-        st.info("Synthetic dataset schema did not include expected fields for analyst visuals.")
 
-    # =========================
-    # Clustering — only if CSV uploaded (K-means)
-    # =========================
+        st.markdown("<div class='blue-accent'>Segment Attractiveness</div>", unsafe_allow_html=True)
+        st.write("Ranks segments using growth, margin, and market share proxies.")
+        seg = synthetic_df.groupby("segment", as_index=False)[
+            ["revenue_growth_pct","ebitda_margin_pct","market_share_pct"]
+        ].mean()
+        seg["attractiveness"] = (
+            0.45 * seg["revenue_growth_pct"] +
+            0.45 * seg["ebitda_margin_pct"] +
+            0.10 * seg["market_share_pct"]
+        )
+        seg = seg.sort_values("attractiveness", ascending=False)
+        st.altair_chart(
+            alt.Chart(seg)
+            .mark_bar()
+            .encode(
+                x=alt.X("segment:N", sort="-y", title="Segment"),
+                y=alt.Y("attractiveness:Q", title="Attractiveness Score"),
+                tooltip=["segment", "attractiveness"],
+            ),
+            use_container_width=True,
+        )
+
+        st.markdown("<div class='blue-accent'>Top 5 Acquisition Targets (Synthetic)</div>", unsafe_allow_html=True)
+        st.write("Ranks companies using a composite of growth, margin, scale, and risk-adjusted penalties.")
+        company_metrics = synthetic_df.groupby("company", as_index=False)[
+            ["revenue_growth_pct","ebitda_margin_pct","market_share_pct",
+             "revenue_usd_m","risk_score","debt_to_equity"]
+        ].mean()
+        company_metrics["ma_score"] = (
+            0.30 * company_metrics["revenue_growth_pct"] +
+            0.30 * company_metrics["ebitda_margin_pct"] +
+            0.20 * company_metrics["market_share_pct"] +
+            0.20 * (company_metrics["revenue_usd_m"] / company_metrics["revenue_usd_m"].max()) * 100 -
+            15 * company_metrics["risk_score"] -
+            3 * company_metrics["debt_to_equity"]
+        )
+        top5 = company_metrics.sort_values("ma_score", ascending=False).head(5)
+        st.dataframe(
+            top5[["company","ma_score","revenue_growth_pct","ebitda_margin_pct",
+                  "market_share_pct","revenue_usd_m","risk_score"]],
+            use_container_width=True,
+        )
+        st.altair_chart(
+            alt.Chart(top5)
+            .mark_bar()
+            .encode(
+                x=alt.X("company:N", sort="-y", title="Company"),
+                y=alt.Y("ma_score:Q", title="M&A Score"),
+                tooltip=["company", "ma_score"],
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.info("Synthetic dataset missing acquisition-style columns for M&A visuals.")
+
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     if uploaded_csv is None:
         st.info("Upload a CSV to enable clustering.")
@@ -879,7 +947,6 @@ if submitted:
             df_plot = numeric_df.copy()
             df_plot["cluster"] = clusters.astype(str)
 
-            # Pick first two numeric columns for a 2D view
             x_col, y_col = numeric_df.columns[:2]
             chart = (
                 alt.Chart(df_plot)
@@ -895,9 +962,6 @@ if submitted:
 
             st.caption("Clusters are based on numeric columns only. Non-numeric columns are ignored.")
 
-    # =========================
-    # Source bias heatmap (citations by section)
-    # =========================
     st.markdown("<h3 class='blue-accent'>Source Bias Heatmap</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Shows which sources are most cited across report sections.</div>",
