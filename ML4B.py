@@ -56,15 +56,6 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Local Development (VS Code) instructions
-# =========================
-with st.expander("Local development setup (optional)", expanded=False):
-    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
-    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
-    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
-
-# =========================
 # Sidebar: API Key input (masked + show toggle)
 # =========================
 st.sidebar.header("API Key")
@@ -664,36 +655,6 @@ if submitted:
         """,
         unsafe_allow_html=True
     )
-
-    # =========================
-    # Visual controls (below Step 3) — M&A section controls
-    # =========================
-    with st.form("visual_controls"):
-        st.markdown("<div class='section-title'>Visual Controls</div>", unsafe_allow_html=True)
-        time_granularity = st.radio(
-            "Trend granularity (affects M&A visuals)",
-            options=["Monthly", "Annual"],
-            horizontal=True
-        )
-        show_profit_pool = st.checkbox("Show Profit Pool by Segment", value=True)
-        show_risk_view = st.checkbox("Show Risk vs Supply Concentration", value=True)
-        show_cluster_view = st.checkbox("Show Clustering (K-means)", value=True)
-        apply_visuals = st.form_submit_button("Apply visuals")
-
-    if "time_granularity_value" not in st.session_state:
-        st.session_state.time_granularity_value = time_granularity
-    if "show_profit_pool_value" not in st.session_state:
-        st.session_state.show_profit_pool_value = show_profit_pool
-    if "show_risk_view_value" not in st.session_state:
-        st.session_state.show_risk_view_value = show_risk_view
-    if "show_cluster_view_value" not in st.session_state:
-        st.session_state.show_cluster_view_value = show_cluster_view
-
-    if apply_visuals:
-        st.session_state.time_granularity_value = time_granularity
-        st.session_state.show_profit_pool_value = show_profit_pool
-        st.session_state.show_risk_view_value = show_risk_view
-        st.session_state.show_cluster_view_value = show_cluster_view
 
     # =========================
     # Synthetic Dataset & M&A-Oriented Visuals
