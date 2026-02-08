@@ -1,6 +1,5 @@
 import os
 import re
-import io
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -573,7 +572,7 @@ if submitted:
     st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
     # =========================
-    # Q3 — Industry report (<500 words), based on those five pages
+    # Q3 — Industry report (under 500 words)
     # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
@@ -582,7 +581,6 @@ if submitted:
     )
 
     sources_text = build_sources_text(docs)
-
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
     system_prompt = (
@@ -626,19 +624,14 @@ if submitted:
         f"SOURCES:\n{sources_text}"
     )
 
-    report = None
     with st.spinner("Generating industry briefing…"):
-        try:
-            response = llm.invoke(
-                [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ]
-            )
-            report = cap_500_words(response.content)
-        except Exception:
-            st.error("We couldn't generate the report. Please double‑check your API key and try again.")
-            st.stop()
+        response = llm.invoke(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+        report = cap_500_words(response.content)
 
     report = re.sub(r"(?m)^#+\s*", "", report)
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
@@ -657,6 +650,36 @@ if submitted:
     )
 
     # =========================
+    # Visual controls (below Step 3)
+    # =========================
+    with st.form("visual_controls"):
+        st.markdown("<div class='section-title'>Visual Controls</div>", unsafe_allow_html=True)
+        time_granularity = st.radio(
+            "Trend granularity (affects M&A visuals)",
+            options=["Monthly", "Annual"],
+            horizontal=True
+        )
+        show_profit_pool = st.checkbox("Show Profit Pool by Segment", value=True)
+        show_risk_view = st.checkbox("Show Risk vs Supply Concentration", value=True)
+        show_cluster_view = st.checkbox("Show Clustering (K-means)", value=True)
+        apply_visuals = st.form_submit_button("Apply visuals")
+
+    if "time_granularity_value" not in st.session_state:
+        st.session_state.time_granularity_value = time_granularity
+    if "show_profit_pool_value" not in st.session_state:
+        st.session_state.show_profit_pool_value = show_profit_pool
+    if "show_risk_view_value" not in st.session_state:
+        st.session_state.show_risk_view_value = show_risk_view
+    if "show_cluster_view_value" not in st.session_state:
+        st.session_state.show_cluster_view_value = show_cluster_view
+
+    if apply_visuals:
+        st.session_state.time_granularity_value = time_granularity
+        st.session_state.show_profit_pool_value = show_profit_pool
+        st.session_state.show_risk_view_value = show_risk_view
+        st.session_state.show_cluster_view_value = show_cluster_view
+
+    # =========================
     # Synthetic Dataset & M&A-Oriented Visuals
     # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
@@ -666,21 +689,17 @@ if submitted:
     )
 
     synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
-synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
+    synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
-share_df = (
-    synthetic_df.groupby("company")["market_share_pct"]
-    .mean()
-    .sort_values(ascending=False)
-    .head(10)
-    .reset_index()
-)
     # ---- Market Share (Top Companies)
     st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
     st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
     share_df = (
-        synthetic_df.groupby("company")["market_share_pct"].mean()
-        .sort_values(ascending=False).head(10).reset_index()
+        synthetic_df.groupby("company")["market_share_pct"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index()
     )
     st.altair_chart(
         alt.Chart(share_df)
@@ -920,47 +939,3 @@ share_df = (
             st.dataframe(cluster_summary)
         else:
             st.warning("Select at least two numeric fields for clustering.")
-
-    # =========================
-    # Source Bias Heatmap
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Source Bias Heatmap</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Shows which sources are most cited across report sections.</div>",
-        unsafe_allow_html=True
-    )
-
-    sections = []
-    current_title = "Report"
-    current_lines = []
-    for line in report.splitlines():
-        if re.match(r"^\s*\d+\)\s+", line):
-            if current_lines:
-                sections.append((current_title, "\n".join(current_lines).strip()))
-            current_title = re.sub(r"^\s*\d+\)\s+", "", line).strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-    if current_lines:
-        sections.append((current_title, "\n".join(current_lines).strip()))
-
-    if sections:
-        heat_rows = []
-        for title, text in sections:
-            for i in range(1, len(docs) + 1):
-                count = len(re.findall(rf"\[Source\s+{i}\]", text))
-                heat_rows.append({"Section": title, "Source": f"Source {i}", "Count": count})
-        heat_df = pd.DataFrame(heat_rows)
-        heat_chart = (
-            alt.Chart(heat_df)
-            .mark_rect()
-            .encode(
-                x=alt.X("Source:N", title="Source"),
-                y=alt.Y("Section:N", title="Section"),
-                color=alt.Color("Count:Q", scale=alt.Scale(scheme="blues"), title="Citations"),
-                tooltip=["Section", "Source", "Count"],
-            )
-        )
-        st.altair_chart(heat_chart, use_container_width=True)
-    else:
-        st.caption("No sections detected to build heatmap.")
