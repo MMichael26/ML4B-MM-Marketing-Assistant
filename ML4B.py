@@ -59,6 +59,15 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
+
+# =========================
 # Sidebar: API Key input (masked + show toggle)
 # =========================
 st.sidebar.header("API Key")
@@ -770,8 +779,8 @@ if submitted:
         # Production country concentration
         st.markdown("<div class='blue-accent'>Production Country Concentration</div>", unsafe_allow_html=True)
         st.write("Shows where production is concentrated in the synthetic dataset, highlighting geographic dependencies.")
-        country_counts = synthetic_df["production_country"].value_counts().reset_index(name="count")
-        country_counts = country_counts.rename(columns={"index": "country"})
+        country_counts = synthetic_df["production_country"].value_counts().reset_index()
+        country_counts.columns = ["country", "count"]
         st.altair_chart(
             alt.Chart(country_counts)
             .mark_bar()
