@@ -1,11 +1,9 @@
 import os
 import re
 import io
-import random
-from datetime import date, timedelta
+import numpy as np
 import pandas as pd
 import streamlit as st
-import openai
 import altair as alt
 from sklearn.cluster import KMeans
 
@@ -40,12 +38,11 @@ st.markdown(
         border-left: 6px solid #2563EB;
     }
     .section-title {
-        font-weight: 700;
+        font-weight: 800;
         font-size: 1.1rem;
         border-bottom: 1px solid #CBD5E1;
-        padding-bottom: 4px;
-        margin: 10px 0 6px 0;
-        color: #0F172A;
+        padding-bottom: 6px;
+        margin: 14px 0 8px 0;
     }
     code {
         white-space: pre-wrap;
@@ -79,55 +76,43 @@ user_key = st.sidebar.text_input(
 )
 
 # =========================
-# Sidebar: Model settings + Report controls (Apply button)
+# Sidebar: Model settings
 # =========================
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
-with st.sidebar.form("controls_form", clear_on_submit=False):
-    st.subheader("Report Preferences")
+# =========================
+# Persistent controls (avoid full refresh)
+# =========================
+with st.sidebar.form("controls_form"):
+    st.markdown("**Report preferences**")
     report_focus = st.selectbox(
         "Report focus",
-        [
-            "Balanced",
-            "Acquisition fit",
-            "Market size & growth",
-            "Competitive landscape",
-            "Regulation & risk",
-            "Operations & supply chain",
-        ],
-        key="report_focus",
+        ["Acquisition screening", "Market overview", "Competitive positioning", "Risk & compliance"],
+        index=0,
     )
     detail_level = st.select_slider(
         "Detail level",
-        options=["Concise", "Standard", "Detailed"],
-        value="Standard",
-        key="detail_level",
+        options=["Concise", "Balanced", "Deep"],
+        value="Balanced"
     )
-    st.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
 
-    st.subheader("Data (CSV optional)")
-    uploaded_csv = st.file_uploader("Upload CSV for clustering", type=["csv"], key="uploaded_csv")
-    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1, key="k_clusters")
+    st.markdown("**Clustering (synthetic data)**")
+    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
 
-    apply_sidebar = st.form_submit_button("Apply settings")
+    apply_controls = st.form_submit_button("Apply settings")
 
-# Persist sidebar values without forcing immediate data changes until Apply
 if "report_focus_value" not in st.session_state:
     st.session_state.report_focus_value = report_focus
 if "detail_level_value" not in st.session_state:
     st.session_state.detail_level_value = detail_level
-if "uploaded_csv_value" not in st.session_state:
-    st.session_state.uploaded_csv_value = uploaded_csv
 if "k_clusters_value" not in st.session_state:
     st.session_state.k_clusters_value = k_clusters
 
-if apply_sidebar:
+if apply_controls:
     st.session_state.report_focus_value = report_focus
     st.session_state.detail_level_value = detail_level
-    st.session_state.uploaded_csv_value = uploaded_csv
     st.session_state.k_clusters_value = k_clusters
-
 
 # =========================
 # Helper functions
@@ -188,45 +173,43 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# Synthetic dataset generator
+# Synthetic Data Schemas
 # =========================
-random_seed = 42
-
 def rand_date(start_year=2020, end_year=2025):
-    start_date = date(start_year, 1, 1)
-    end_date = date(end_year, 12, 31)
+    start_date = pd.Timestamp(f"{start_year}-01-01")
+    end_date = pd.Timestamp(f"{end_year}-12-31")
     delta_days = (end_date - start_date).days
-    return (start_date + timedelta(days=random.randint(0, delta_days))).isoformat()
+    return (start_date + pd.Timedelta(days=int(np.random.randint(0, delta_days)))).date().isoformat()
 
 
 def schema_fast_fashion():
-    brands = ["Zara","H&M","Shein","Forever 21","Uniqlo","Primark","Boohoo","Mango","ASOS"]
-    product_types = ["T-shirt","Jeans","Dress","Hoodie","Sweater","Skirt","Shorts","Jacket"]
-    materials = ["Cotton","Polyester","Viscose","Linen","Nylon","Acrylic","Wool","Blend"]
-    countries = ["Bangladesh","Vietnam","China","India","Turkey","Cambodia","Pakistan","Indonesia"]
-    seasons = ["Spring","Summer","Fall","Winter"]
-    colors = ["Black","White","Blue","Red","Green","Beige","Gray","Pink","Yellow","Brown"]
+    brands = ["Zara", "H&M", "Shein", "Forever 21", "Uniqlo", "Primark", "Boohoo", "Mango", "ASOS"]
+    product_types = ["T-shirt", "Jeans", "Dress", "Hoodie", "Sweater", "Skirt", "Shorts", "Jacket"]
+    materials = ["Cotton", "Polyester", "Viscose", "Linen", "Nylon", "Acrylic", "Wool", "Blend"]
+    countries = ["Bangladesh", "Vietnam", "China", "India", "Turkey", "Cambodia", "Pakistan", "Indonesia"]
+    seasons = ["Spring", "Summer", "Fall", "Winter"]
+    colors = ["Black", "White", "Blue", "Red", "Green", "Beige", "Gray", "Pink", "Yellow", "Brown"]
 
     columns = [
-        "id","brand","product_type","material","color","price_usd",
-        "production_country","co2_kg","water_l","recycled_pct",
-        "labor_rating","collection_season","release_date"
+        "id", "brand", "product_type", "material", "color", "price_usd",
+        "production_country", "co2_kg", "water_l", "recycled_pct",
+        "labor_rating", "collection_season", "release_date"
     ]
 
     def row(i):
         return [
             i,
-            random.choice(brands),
-            random.choice(product_types),
-            random.choice(materials),
-            random.choice(colors),
-            round(random.uniform(4.99, 89.99), 2),
-            random.choice(countries),
-            round(random.uniform(1.5, 45.0), 2),
-            round(random.uniform(50, 2500), 1),
-            round(random.uniform(0, 60), 1),
-            random.choice(["A","B","C","D","E"]),
-            random.choice(seasons),
+            np.random.choice(brands),
+            np.random.choice(product_types),
+            np.random.choice(materials),
+            np.random.choice(colors),
+            round(float(np.random.uniform(4.99, 89.99)), 2),
+            np.random.choice(countries),
+            round(float(np.random.uniform(1.5, 45.0)), 2),
+            round(float(np.random.uniform(50, 2500)), 1),
+            round(float(np.random.uniform(0, 60)), 1),
+            np.random.choice(["A", "B", "C", "D", "E"]),
+            np.random.choice(seasons),
             rand_date(2022, 2025),
         ]
 
@@ -234,191 +217,168 @@ def schema_fast_fashion():
 
 
 def schema_healthcare():
-    providers = ["St. Mary Hospital","City Clinic","MedPrime","CarePlus","BlueLeaf Health"]
-    departments = ["Cardiology","Oncology","Pediatrics","Orthopedics","Neurology","ER"]
-    insurance = ["Private","Medicare","Medicaid","Self-Pay"]
-    diagnosis = ["Hypertension","Diabetes","Asthma","Flu","Arthritis","Migraine"]
+    providers = ["St. Mary Hospital", "City Clinic", "MedPrime", "CarePlus", "BlueLeaf Health"]
+    departments = ["Cardiology", "Oncology", "Pediatrics", "Orthopedics", "Neurology", "ER"]
+    insurance = ["Private", "Medicare", "Medicaid", "Self-Pay"]
+    diagnosis = ["Hypertension", "Diabetes", "Asthma", "Flu", "Arthritis", "Migraine"]
 
     columns = [
-        "id","provider","department","visit_date","diagnosis",
-        "length_of_stay_days","total_cost_usd","insurance_type","readmitted"
+        "id", "provider", "department", "visit_date", "diagnosis",
+        "length_of_stay_days", "total_cost_usd", "insurance_type", "readmitted"
     ]
 
     def row(i):
         return [
             i,
-            random.choice(providers),
-            random.choice(departments),
+            np.random.choice(providers),
+            np.random.choice(departments),
             rand_date(2021, 2025),
-            random.choice(diagnosis),
-            random.randint(0, 14),
-            round(random.uniform(120, 25000), 2),
-            random.choice(insurance),
-            random.choice(["yes","no"]),
+            np.random.choice(diagnosis),
+            int(np.random.randint(0, 14)),
+            round(float(np.random.uniform(120, 25000)), 2),
+            np.random.choice(insurance),
+            np.random.choice(["yes", "no"]),
         ]
 
     return columns, row
 
 
 def schema_ecommerce():
-    categories = ["Electronics","Home","Beauty","Sports","Toys","Fashion","Books"]
-    channels = ["Web","Mobile","Marketplace"]
-    regions = ["NA","EU","APAC","LATAM"]
+    categories = ["Electronics", "Home", "Beauty", "Sports", "Toys", "Fashion", "Books"]
+    channels = ["Web", "Mobile", "Marketplace"]
+    regions = ["NA", "EU", "APAC", "LATAM"]
 
     columns = [
-        "id","order_date","category","unit_price_usd","units",
-        "channel","region","discount_pct","shipping_days","returned"
+        "id", "order_date", "category", "unit_price_usd", "units",
+        "channel", "region", "discount_pct", "shipping_days", "returned"
     ]
 
     def row(i):
         return [
             i,
             rand_date(2021, 2025),
-            random.choice(categories),
-            round(random.uniform(5, 1500), 2),
-            random.randint(1, 8),
-            random.choice(channels),
-            random.choice(regions),
-            round(random.uniform(0, 40), 1),
-            random.randint(1, 10),
-            random.choice(["yes","no"]),
+            np.random.choice(categories),
+            round(float(np.random.uniform(5, 1500)), 2),
+            int(np.random.randint(1, 8)),
+            np.random.choice(channels),
+            np.random.choice(regions),
+            round(float(np.random.uniform(0, 40)), 1),
+            int(np.random.randint(1, 10)),
+            np.random.choice(["yes", "no"]),
         ]
 
     return columns, row
 
 
 def schema_semiconductors():
-    companies = ["TSMC","Samsung","Intel","GlobalFoundries","SMIC","Micron","SK hynix","Texas Instruments"]
-    segments = ["Foundry","Memory","Logic","Analog","Power","Mixed-Signal"]
-    nodes = [3, 5, 7, 10, 14, 28, 45, 65]
-    countries = ["Taiwan","South Korea","United States","China","Japan","Germany","Singapore"]
-    materials = ["Silicon","Gallium Nitride","Silicon Carbide","Copper","Low-k Dielectric"]
+    companies = ["TSMC", "Samsung", "Intel", "SK Hynix", "Micron", "GlobalFoundries", "UMC"]
+    segments = ["Foundry", "Memory", "Logic", "Analog", "Power", "RF"]
+    nodes = ["5nm", "7nm", "10nm", "14nm", "22nm", "28nm", "40nm"]
+    regions = ["US", "Taiwan", "Korea", "Japan", "EU", "China"]
 
     columns = [
-        "id","brand","segment","node_nm","wafer_cost_usd","yield_pct",
-        "price_usd","production_country","material","co2_kg","water_l","recycled_pct","ship_date"
+        "id", "company", "segment", "node", "region", "wafer_starts_k",
+        "yield_pct", "asp_usd", "capex_bil", "fab_utilization_pct", "date"
     ]
 
     def row(i):
-        node = random.choice(nodes)
-        yield_pct = round(random.uniform(70, 98), 1)
-        wafer_cost = round(random.uniform(800, 20000), 2)
-        price = round(wafer_cost / max(1, yield_pct / 100) / random.uniform(30, 120), 2)
         return [
             i,
-            random.choice(companies),
-            random.choice(segments),
-            node,
-            wafer_cost,
-            yield_pct,
-            price,
-            random.choice(countries),
-            random.choice(materials),
-            round(random.uniform(5, 120), 2),
-            round(random.uniform(200, 1800), 1),
-            round(random.uniform(0, 35), 1),
-            rand_date(2022, 2025),
+            np.random.choice(companies),
+            np.random.choice(segments),
+            np.random.choice(nodes),
+            np.random.choice(regions),
+            round(float(np.random.uniform(10, 180)), 1),
+            round(float(np.random.uniform(70, 99)), 1),
+            round(float(np.random.uniform(600, 4000)), 1),
+            round(float(np.random.uniform(0.5, 15)), 2),
+            round(float(np.random.uniform(55, 95)), 1),
+            rand_date(2021, 2025),
         ]
 
     return columns, row
 
 
 def schema_ev_batteries():
-    companies = ["CATL","LG Energy Solution","Panasonic","BYD","SK On","Northvolt","Samsung SDI"]
-    chemistries = ["LFP","NMC","NCA","LMFP","LTO"]
-    formats = ["Pouch","Prismatic","Cylindrical"]
-    countries = ["China","South Korea","Japan","United States","Germany","Sweden","Poland"]
-    materials = ["Lithium","Nickel","Cobalt","Manganese","Phosphate","Graphite"]
+    makers = ["CATL", "LG Energy", "Panasonic", "BYD", "SK On", "Samsung SDI"]
+    chemistries = ["LFP", "NMC", "NCA"]
+    regions = ["China", "Korea", "Japan", "EU", "US"]
+    segments = ["Passenger EV", "Commercial EV", "Energy Storage"]
 
     columns = [
-        "id","brand","chemistry","cell_format","energy_density_whkg","cycle_life",
-        "price_usd","production_country","material","co2_kg","water_l","recycled_pct","ship_date"
+        "id", "maker", "chemistry", "segment", "region",
+        "cost_per_kwh", "energy_density_whkg", "cycle_life",
+        "capacity_gwh", "date"
     ]
 
     def row(i):
-        density = round(random.uniform(140, 280), 1)
-        cycle_life = random.randint(800, 3500)
-        price = round(random.uniform(55, 220), 2)
         return [
             i,
-            random.choice(companies),
-            random.choice(chemistries),
-            random.choice(formats),
-            density,
-            cycle_life,
-            price,
-            random.choice(countries),
-            random.choice(materials),
-            round(random.uniform(8, 160), 2),
-            round(random.uniform(120, 1600), 1),
-            round(random.uniform(0, 45), 1),
-            rand_date(2022, 2025),
+            np.random.choice(makers),
+            np.random.choice(chemistries),
+            np.random.choice(segments),
+            np.random.choice(regions),
+            round(float(np.random.uniform(70, 180)), 2),
+            round(float(np.random.uniform(120, 300)), 1),
+            int(np.random.randint(800, 4000)),
+            round(float(np.random.uniform(1, 50)), 2),
+            rand_date(2021, 2025),
         ]
 
     return columns, row
 
 
 def schema_retail():
-    retailers = ["Walmart","Target","Carrefour","Tesco","Costco","Kroger","Aldi","Lidl"]
-    categories = ["Grocery","Home","Electronics","Apparel","Health","Beauty","Toys"]
-    channels = ["In-store","Online","Omni"]
-    countries = ["United States","United Kingdom","France","Germany","Canada","Spain","Italy"]
-    materials = ["Paper","Plastic","Mixed","Recycled"]
+    banners = ["Walmart", "Target", "Carrefour", "Tesco", "Costco", "Aldi", "Lidl"]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+    formats = ["Hypermarket", "Supermarket", "Warehouse", "Discount", "Online"]
 
     columns = [
-        "id","brand","category","channel","basket_size","price_usd",
-        "production_country","material","co2_kg","water_l","recycled_pct","order_date"
+        "id", "banner", "format", "region", "store_sales_usd_m",
+        "same_store_growth_pct", "foot_traffic_idx", "basket_size_usd",
+        "private_label_pct", "date"
     ]
 
     def row(i):
-        price = round(random.uniform(10, 350), 2)
-        basket = random.randint(1, 40)
         return [
             i,
-            random.choice(retailers),
-            random.choice(categories),
-            random.choice(channels),
-            basket,
-            price,
-            random.choice(countries),
-            random.choice(materials),
-            round(random.uniform(1, 35), 2),
-            round(random.uniform(20, 600), 1),
-            round(random.uniform(5, 60), 1),
-            rand_date(2022, 2025),
+            np.random.choice(banners),
+            np.random.choice(formats),
+            np.random.choice(regions),
+            round(float(np.random.uniform(5, 400)), 2),
+            round(float(np.random.uniform(-5, 15)), 2),
+            round(float(np.random.uniform(70, 130)), 1),
+            round(float(np.random.uniform(15, 120)), 2),
+            round(float(np.random.uniform(5, 35)), 1),
+            rand_date(2021, 2025),
         ]
 
     return columns, row
 
 
 def schema_logistics():
-    providers = ["DHL","FedEx","UPS","Maersk","DB Schenker","Kuehne+Nagel","XPO"]
-    modes = ["Air","Ocean","Rail","Road"]
-    regions = ["NA","EU","APAC","LATAM","MEA"]
-    countries = ["United States","Germany","China","Netherlands","Singapore","United Kingdom"]
-    materials = ["Cardboard","Plastic","Reusable","Mixed"]
+    carriers = ["DHL", "FedEx", "UPS", "Maersk", "MSC", "DP World", "XPO"]
+    modes = ["Air", "Ocean", "Road", "Rail"]
+    regions = ["NA", "EU", "APAC", "LATAM", "MEA"]
 
     columns = [
-        "id","brand","mode","region","distance_km","price_usd",
-        "production_country","material","co2_kg","water_l","recycled_pct","ship_date"
+        "id", "carrier", "mode", "region", "shipment_volume_k",
+        "on_time_pct", "cost_per_shipment_usd", "fuel_cost_index",
+        "capacity_util_pct", "date"
     ]
 
     def row(i):
-        distance = random.randint(50, 12000)
-        price = round(random.uniform(120, 9000), 2)
         return [
             i,
-            random.choice(providers),
-            random.choice(modes),
-            random.choice(regions),
-            distance,
-            price,
-            random.choice(countries),
-            random.choice(materials),
-            round(random.uniform(5, 220), 2),
-            round(random.uniform(30, 900), 1),
-            round(random.uniform(5, 55), 1),
-            rand_date(2022, 2025),
+            np.random.choice(carriers),
+            np.random.choice(modes),
+            np.random.choice(regions),
+            round(float(np.random.uniform(20, 700)), 1),
+            round(float(np.random.uniform(75, 98)), 1),
+            round(float(np.random.uniform(50, 900)), 2),
+            round(float(np.random.uniform(80, 150)), 1),
+            round(float(np.random.uniform(50, 95)), 1),
+            rand_date(2021, 2025),
         ]
 
     return columns, row
@@ -426,26 +386,26 @@ def schema_logistics():
 
 def schema_generic(industry_name):
     columns = [
-        "id","industry","entity","event_date","metric_a","metric_b",
-        "metric_c","region","category","status"
+        "id", "industry", "entity", "event_date", "metric_a", "metric_b",
+        "metric_c", "region", "category", "status"
     ]
-    entities = ["Alpha","Beta","Gamma","Delta","Omega"]
-    regions = ["NA","EU","APAC","LATAM","MEA"]
-    categories = ["Standard","Premium","Enterprise","SMB"]
-    status = ["active","inactive","pending","closed"]
+    entities = ["Alpha", "Beta", "Gamma", "Delta", "Omega"]
+    regions = ["NA", "EU", "APAC", "LATAM", "MEA"]
+    categories = ["Standard", "Premium", "Enterprise", "SMB"]
+    status = ["active", "inactive", "pending", "closed"]
 
     def row(i):
         return [
             i,
             industry_name,
-            random.choice(entities),
+            np.random.choice(entities),
             rand_date(2020, 2025),
-            round(random.uniform(0, 1000), 2),
-            round(random.uniform(0, 100), 2),
-            round(random.uniform(0, 10), 2),
-            random.choice(regions),
-            random.choice(categories),
-            random.choice(status),
+            round(float(np.random.uniform(0, 1000)), 2),
+            round(float(np.random.uniform(0, 100)), 2),
+            round(float(np.random.uniform(0, 10)), 2),
+            np.random.choice(regions),
+            np.random.choice(categories),
+            np.random.choice(status),
         ]
 
     return columns, row
@@ -455,165 +415,89 @@ SCHEMAS = {
     "fast fashion": schema_fast_fashion,
     "healthcare": schema_healthcare,
     "ecommerce": schema_ecommerce,
-    "e-commerce": schema_ecommerce,
     "semiconductors": schema_semiconductors,
-    "semiconductor": schema_semiconductors,
     "ev batteries": schema_ev_batteries,
-    "ev battery": schema_ev_batteries,
     "retail": schema_retail,
     "logistics": schema_logistics,
 }
 
-SCHEMA_KEYWORDS = [
-    (["fast fashion", "apparel"], schema_fast_fashion),
-    (["semiconductor", "chip", "foundry", "ic", "wafer", "fab"], schema_semiconductors),
-    (["ev battery", "battery", "lithium", "lithium-ion", "lithium ion", "cell"], schema_ev_batteries),
-    (["ecommerce", "e-commerce", "online retail", "marketplace"], schema_ecommerce),
-    (["retail", "grocery", "department store", "supermarket"], schema_retail),
-    (["logistics", "shipping", "freight", "supply chain", "warehouse", "3pl"], schema_logistics),
-    (["healthcare", "hospital", "clinic"], schema_healthcare),
-]
+SCHEMA_KEYWORDS = {
+    "fast fashion": ["fashion", "apparel", "textile"],
+    "healthcare": ["health", "medical", "hospital", "pharma"],
+    "ecommerce": ["ecommerce", "e-commerce", "online retail", "marketplace"],
+    "semiconductors": ["semiconductor", "chip", "foundry", "fab"],
+    "ev batteries": ["battery", "ev", "electric vehicle", "lithium"],
+    "retail": ["retail", "supermarket", "grocery", "store"],
+    "logistics": ["logistics", "shipping", "freight", "supply chain"],
+}
 
 
 def pick_schema(industry: str):
     key = industry.strip().lower()
     if key in SCHEMAS:
-        return SCHEMAS[key]()
-    for keywords, schema_fn in SCHEMA_KEYWORDS:
-        if any(kw in key for kw in keywords):
-            return schema_fn()
-    return schema_generic(industry)
+        return SCHEMAS[key]
+    for schema_name, kws in SCHEMA_KEYWORDS.items():
+        if any(k in key for k in kws):
+            return SCHEMAS[schema_name]
+    return lambda: schema_generic(industry)
 
 
-def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
-    random.seed(random_seed)
-    columns, row_fn = pick_schema(industry)
-
-    data = [row_fn(i) for i in range(1, rows + 1)]
-    return pd.DataFrame(data, columns=columns)
+def generate_synthetic_df(industry: str, rows: int = 240) -> pd.DataFrame:
+    np.random.seed(abs(hash(industry)) % (2**32))
+    schema_fn = pick_schema(industry)
+    columns, row_fn = schema_fn()
+    rows_list = [row_fn(i + 1) for i in range(rows)]
+    return pd.DataFrame(rows_list, columns=columns)
 
 
 def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
-    enriched = df.copy()
-    seed = abs(hash(industry)) % (2**32)
-    rng = random.Random(seed)
+    rng = np.random.default_rng(abs(hash(industry)) % (2**32))
+    df = df.copy()
 
-    if "brand" in enriched.columns:
-        enriched["company"] = enriched["brand"]
-    elif "provider" in enriched.columns:
-        enriched["company"] = enriched["provider"]
-    elif "entity" in enriched.columns:
-        enriched["company"] = enriched["entity"]
-    else:
-        enriched["company"] = [f"{industry.title()} Co {i+1}" for i in range(len(enriched))]
+    if "company" not in df.columns:
+        df["company"] = df.get("brand", df.get("provider", df.get("maker", df.get("carrier", "Company"))))
 
-    if "segment" in enriched.columns:
-        enriched["segment"] = enriched["segment"]
-    elif "category" in enriched.columns:
-        enriched["segment"] = enriched["category"]
-    elif "product_type" in enriched.columns:
-        enriched["segment"] = enriched["product_type"]
-    elif "mode" in enriched.columns:
-        enriched["segment"] = enriched["mode"]
-    else:
-        enriched["segment"] = "General"
+    df["company"] = df["company"].astype(str)
 
-    if "region" not in enriched.columns:
-        enriched["region"] = rng.choices(
-            ["NA", "EU", "APAC", "LATAM", "MEA"],
-            weights=[0.35, 0.25, 0.25, 0.1, 0.05],
-            k=len(enriched),
+    df["segment"] = df.get("segment", None)
+    if df["segment"].isnull().all():
+        df["segment"] = rng.choice(
+            ["Core", "Premium", "Value", "Emerging"], size=len(df), replace=True
         )
+
+    df["region"] = df.get("region", None)
+    if df["region"].isnull().all():
+        df["region"] = rng.choice(["NA", "EU", "APAC", "LATAM", "MEA"], size=len(df), replace=True)
 
     date_col = None
-    for candidate in ["release_date", "visit_date", "order_date", "ship_date", "event_date"]:
-        if candidate in enriched.columns:
-            date_col = candidate
+    for c in ["release_date", "visit_date", "order_date", "date", "event_date"]:
+        if c in df.columns:
+            date_col = c
             break
     if date_col is None:
-        enriched["event_date"] = [rand_date(2021, 2025) for _ in range(len(enriched))]
+        df["event_date"] = pd.to_datetime(
+            rng.choice(pd.date_range("2021-01-01", "2025-12-31"), size=len(df))
+        )
         date_col = "event_date"
-    enriched["event_date"] = pd.to_datetime(enriched[date_col], errors="coerce")
-    enriched["year"] = enriched["event_date"].dt.year
-    enriched["month"] = enriched["event_date"].dt.to_period("M").astype(str)
+    df[date_col] = pd.to_datetime(df[date_col])
 
-    companies = sorted(enriched["company"].unique().tolist())
-    base = [rng.uniform(0.5, 8.0) for _ in companies]
-    scale = 100.0 / sum(base)
-    share_map = {c: round(b * scale, 2) for c, b in zip(companies, base)}
-    enriched["market_share_pct"] = enriched["company"].map(share_map)
+    df["year"] = df[date_col].dt.year
+    df["month"] = df[date_col].dt.to_period("M").astype(str)
 
-    rev_base = {c: rng.lognormvariate(3.2, 0.6) * 10 for c in companies}
-    enriched["revenue_usd_m"] = [
-        round(rev_base[c] * rng.uniform(0.7, 1.3), 2) for c in enriched["company"]
-    ]
+    df["market_share_pct"] = np.clip(rng.normal(5, 2, len(df)), 0.2, 15)
+    df["revenue_usd_m"] = np.clip(rng.normal(250, 120, len(df)), 20, 1200)
+    df["revenue_growth_pct"] = np.clip(rng.normal(8, 6, len(df)), -10, 30)
+    df["ebitda_margin_pct"] = np.clip(rng.normal(18, 7, len(df)), 2, 45)
+    df["capex_intensity_pct"] = np.clip(rng.normal(6, 3, len(df)), 1, 20)
+    df["debt_to_equity"] = np.clip(rng.normal(1.1, 0.6, len(df)), 0, 4.5)
 
-    enriched["revenue_growth_pct"] = [
-        round(rng.uniform(-8, 25), 2) for _ in range(len(enriched))
-    ]
-    enriched["ebitda_margin_pct"] = [
-        round(rng.uniform(5, 38), 2) for _ in range(len(enriched))
-    ]
-    enriched["capex_intensity_pct"] = [
-        round(rng.uniform(2, 18), 2) for _ in range(len(enriched))
-    ]
-    enriched["debt_to_equity"] = [
-        round(rng.uniform(0.0, 3.5), 2) for _ in range(len(enriched))
-    ]
+    df["supply_concentration"] = np.clip(rng.normal(0.55, 0.2, len(df)), 0, 1)
+    df["risk_score"] = np.clip(
+        0.5 * (1 - df["supply_concentration"]) + 0.5 * (1 - (df["ebitda_margin_pct"] / 50)),
+        0, 1
+    )
 
-    enriched["supply_concentration"] = [
-        round(rng.uniform(0.1, 0.9), 2) for _ in range(len(enriched))
-    ]
-    enriched["risk_score"] = [
-        round(
-            0.35 * (1 - min(1, g / 30)) +
-            0.35 * min(1, d / 3.5) +
-            0.30 * s,
-            2
-        )
-        for g, d, s in zip(
-            enriched["revenue_growth_pct"],
-            enriched["debt_to_equity"],
-            enriched["supply_concentration"],
-        )
-    ]
-
-    return enriched
-
-
-def split_report_sections(report_text: str):
-    sections = []
-    current_title = "Report"
-    current_lines = []
-    for line in report_text.splitlines():
-        if re.match(r"^\s*\d+\)\s+", line):
-            if current_lines:
-                sections.append((current_title, "\n".join(current_lines).strip()))
-            current_title = re.sub(r"^\s*\d+\)\s+", "", line).strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-    if current_lines:
-        sections.append((current_title, "\n".join(current_lines).strip()))
-    return sections
-
-
-def section_confidence_score(section_text: str):
-    words = section_text.split()
-    word_count = max(1, len(words))
-    citations = len(re.findall(r"\[Source\s+\d+\]", section_text))
-    citation_density = min(1.0, citations / max(1, word_count / 60))
-    length_score = min(1.0, word_count / 120)
-    score = int((0.6 * citation_density + 0.4 * length_score) * 100)
-    return max(10, min(100, score))
-
-
-def prepare_for_kmeans(df: pd.DataFrame):
-    numeric_df = df.select_dtypes(include=["number"]).copy()
-    if numeric_df.shape[1] < 2:
-        return None, None
-    scaled = (numeric_df - numeric_df.mean()) / (numeric_df.std(ddof=0) + 1e-9)
-    return numeric_df, scaled
+    return df
 
 
 # =========================
@@ -664,6 +548,9 @@ if submitted:
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
+    # =========================
+    # Q2 — URLs of five most relevant Wikipedia pages
+    # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
@@ -694,6 +581,9 @@ if submitted:
 
     st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
 
+    # =========================
+    # Q3 — Industry report (<500 words), based on those five pages
+    # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
@@ -714,11 +604,23 @@ if submitted:
         "Keep the full report under 500 words."
     )
 
+    focus_map = {
+        "Acquisition screening": "Focus on M&A relevance, strategic fit, and competitive landscape.",
+        "Market overview": "Focus on market definition, scope, and broad industry structure.",
+        "Competitive positioning": "Focus on segments, key players, and competitive dynamics.",
+        "Risk & compliance": "Focus on regulatory, operational, and reputational risks."
+    }
+    detail_map = {
+        "Concise": "Use brief, tight language.",
+        "Balanced": "Use balanced depth with clear headings.",
+        "Deep": "Add more detail within the 500-word limit."
+    }
+
     user_prompt = (
         f"Industry: {industry.strip()}\n\n"
         "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
-        f"Report focus: {st.session_state.report_focus_value}.\n"
-        f"Detail level: {st.session_state.detail_level_value}.\n"
+        f"{focus_map.get(st.session_state.report_focus_value, '')}\n"
+        f"{detail_map.get(st.session_state.detail_level_value, '')}\n"
         "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
         "Required structure (use these headings):\n"
         "1) Executive snapshot (2–3 sentences)\n"
@@ -744,16 +646,12 @@ if submitted:
             )
             report = cap_500_words(response.content)
         except Exception:
-            st.error("Sorry, we couldn't generate the report. Please try again in a moment.")
+            st.error("We couldn't generate the report. Please double‑check your API key and try again.")
             st.stop()
 
-    if not report:
-        st.error("No report content was generated. Please try again.")
-        st.stop()
-
     report = re.sub(r"(?m)^#+\s*", "", report)
-    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report)
-    report = re.sub(r"(?m)^\s*[-*]\s*", "", report).strip()
+    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
+    report = report.replace("- **", "").replace("**", "")
 
     word_count = len(report.split())
     st.caption(f"Word count: {word_count} / 500")
@@ -767,61 +665,326 @@ if submitted:
         unsafe_allow_html=True
     )
 
-    with st.form("visual_controls", clear_on_submit=False):
-        st.subheader("Visual Controls")
+    # =========================
+    # Visual controls (below Step 3)
+    # =========================
+    with st.form("visual_controls"):
+        st.markdown("<div class='section-title'>Visual Controls</div>", unsafe_allow_html=True)
         time_granularity = st.radio(
-            "Time aggregation",
-            ["Monthly", "Annual"],
-            index=0,
-            key="time_granularity",
-            horizontal=True,
+            "Trend granularity",
+            options=["Monthly", "Annual"],
+            horizontal=True
         )
-        apply_visuals = st.form_submit_button("Apply visual settings")
+        apply_visuals = st.form_submit_button("Apply visuals")
 
     if "time_granularity_value" not in st.session_state:
         st.session_state.time_granularity_value = time_granularity
     if apply_visuals:
         st.session_state.time_granularity_value = time_granularity
 
+    # =========================
+    # Synthetic Dataset & M&A-Oriented Visuals
+    # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
+        "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition‑style metrics for analyst screening.</div>",
         unsafe_allow_html=True
     )
 
     synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
     synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
-    csv_buffer = io.StringIO()
-    synthetic_df.to_csv(csv_buffer, index=False)
+    csv_bytes = synthetic_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         "Download synthetic dataset (CSV)",
-        data=csv_buffer.getvalue(),
-        file_name=f"{industry.strip().lower().replace(' ', '_')}_synthetic.csv",
-        mime="text/csv",
+        data=csv_bytes,
+        file_name="synthetic_industry_data.csv",
+        mime="text/csv"
     )
 
-    st.markdown("<div class='blue-accent'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
-    st.write("Shows how total synthetic revenue shifts over time using the selected aggregation level.")
+    # ---- Market Share (Top Companies)
+    st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
+    st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
+    share_df = (
+        synthetic_df.groupby("company")["market_share_pct"].mean()
+        .sort_values(ascending=False).head(10).reset_index()
+    )
+    st.altair_chart(
+        alt.Chart(share_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("market_share_pct:Q", title="Market Share (%)"),
+            y=alt.Y("company:N", sort="-x", title="Company"),
+            tooltip=["company", "market_share_pct"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Growth vs EBITDA Margin
+    st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
+    st.write("Shows the trade‑off between growth and profitability across synthetic entities.")
+    st.altair_chart(
+        alt.Chart(synthetic_df)
+        .mark_circle(size=70, opacity=0.8)
+        .encode(
+            x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
+            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+            color=alt.Color("segment:N", title="Segment"),
+            tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Revenue Distribution
+    st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
+    st.write("Shows how revenue is distributed across entities, highlighting size skew.")
+    st.altair_chart(
+        alt.Chart(synthetic_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
+            y=alt.Y("count():Q", title="Count"),
+            tooltip=["count()"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Revenue Trend (Monthly/Annual)
+    st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
+    st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
     if st.session_state.time_granularity_value == "Monthly":
-        time_df = synthetic_df.groupby("month", as_index=False)["revenue_usd_m"].mean()
-        time_df = time_df.sort_values("month")
+        time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
         time_col = "month"
-        time_x = "month:N"
-        time_title = "Month"
     else:
-        time_df = synthetic_df.groupby("year", as_index=False)["revenue_usd_m"].mean()
-        time_df = time_df.sort_values("year")
+        time_df = synthetic_df.groupby("year")["revenue_usd_m"].sum().reset_index()
         time_col = "year"
-        time_x = "year:O"
-        time_title = "Year"
+
     st.altair_chart(
         alt.Chart(time_df)
         .mark_line(point=True)
         .encode(
-            x=alt.X(time_x, title=time_title),
-            y=alt.Y("revenue_usd_m:Q", title="Avg Revenue (USD, millions)"),
+            x=alt.X(f"{time_col}:O", title=time_col.title()),
+            y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
             tooltip=[time_col, "revenue_usd_m"],
         ),
-        use_container_width=True,
+        use_container_width=True
     )
+
+    # ---- Capex vs Margin
+    st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
+    st.write("Identifies which players combine strong margins with capital efficiency.")
+    st.altair_chart(
+        alt.Chart(synthetic_df)
+        .mark_circle(size=70, opacity=0.8)
+        .encode(
+            x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
+            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+            color=alt.Color("segment:N", title="Segment"),
+            tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Risk vs Supply Concentration
+    st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
+    st.write("Highlights exposure to supply‑chain concentration risk against composite risk scores.")
+    st.altair_chart(
+        alt.Chart(synthetic_df)
+        .mark_circle(size=70, opacity=0.8)
+        .encode(
+            x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
+            y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
+            color=alt.Color("segment:N", title="Segment"),
+            tooltip=["company", "supply_concentration", "risk_score"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Segment Attractiveness
+    st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
+    st.write("Compares segments by a composite of growth, margin, and low risk.")
+    seg_df = synthetic_df.groupby("segment").agg(
+        avg_growth=("revenue_growth_pct", "mean"),
+        avg_margin=("ebitda_margin_pct", "mean"),
+        avg_risk=("risk_score", "mean")
+    ).reset_index()
+    seg_df["attractiveness"] = (seg_df["avg_growth"] * 0.4 + seg_df["avg_margin"] * 0.5 + (1 - seg_df["avg_risk"]) * 10)
+    st.altair_chart(
+        alt.Chart(seg_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("attractiveness:Q", title="Attractiveness Score"),
+            y=alt.Y("segment:N", sort="-x", title="Segment"),
+            tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
+        ),
+        use_container_width=True
+    )
+
+    # ---- Top 5 Acquisition Targets
+    st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
+    st.write("Ranks targets using a composite of growth, margin, and lower risk.")
+    target_df = synthetic_df.copy()
+    target_df["target_score"] = (
+        target_df["revenue_growth_pct"] * 0.4 +
+        target_df["ebitda_margin_pct"] * 0.5 +
+        (1 - target_df["risk_score"]) * 10
+    )
+    top_targets = target_df.sort_values("target_score", ascending=False).head(5)
+    st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
+
+    # ---- Profit Pool by Segment
+    st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
+    st.write("Estimates segment profit pools using revenue × margin as a proxy.")
+    profit_df = synthetic_df.groupby("segment").apply(
+        lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
+    ).reset_index(name="profit_pool")
+    st.altair_chart(
+        alt.Chart(profit_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
+            y=alt.Y("segment:N", sort="-x", title="Segment"),
+            tooltip=["segment", "profit_pool"]
+        ),
+        use_container_width=True
+    )
+
+    # ---- Margin vs Leverage
+    st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
+    st.write("Shows whether higher leverage correlates with margin performance.")
+    st.altair_chart(
+        alt.Chart(synthetic_df)
+        .mark_circle(size=70, opacity=0.8)
+        .encode(
+            x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
+            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+            color=alt.Color("segment:N", title="Segment"),
+            tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
+        ),
+        use_container_width=True
+    )
+
+    # ---- Top 5 Risks
+    st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
+    st.write("Lists the highest‑risk entities to flag for diligence.")
+    top_risks = synthetic_df.sort_values("risk_score", ascending=False).head(5)
+    st.dataframe(top_risks[["company", "segment", "region", "risk_score", "supply_concentration"]])
+
+    # ---- Profit Strategy Summary
+    st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
+    st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
+    st.write(
+        f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
+    )
+    st.write(
+        f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
+    )
+    st.write(
+        f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
+    )
+
+    # =========================
+    # Clustering (K-means)
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
+        unsafe_allow_html=True
+    )
+
+    cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
+
+    with st.form("cluster_controls"):
+        st.markdown("**Cluster Controls**")
+        cluster_fields = st.multiselect(
+            "Fields used to cluster",
+            options=cluster_df.columns.tolist(),
+            default=["revenue_growth_pct", "ebitda_margin_pct", "capex_intensity_pct", "risk_score"]
+        )
+        cluster_x = st.selectbox("X-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("revenue_growth_pct"))
+        cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
+        apply_cluster = st.form_submit_button("Apply clustering")
+
+    if "cluster_fields_value" not in st.session_state:
+        st.session_state.cluster_fields_value = cluster_fields
+    if "cluster_x_value" not in st.session_state:
+        st.session_state.cluster_x_value = cluster_x
+    if "cluster_y_value" not in st.session_state:
+        st.session_state.cluster_y_value = cluster_y
+
+    if apply_cluster:
+        st.session_state.cluster_fields_value = cluster_fields
+        st.session_state.cluster_x_value = cluster_x
+        st.session_state.cluster_y_value = cluster_y
+
+    if len(st.session_state.cluster_fields_value) >= 2:
+        scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
+            cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+        )
+        km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
+        clusters = km.fit_predict(scaled)
+        plot_df = synthetic_df.copy()
+        plot_df["cluster"] = clusters.astype(str)
+
+        st.altair_chart(
+            alt.Chart(plot_df)
+            .mark_circle(size=70, opacity=0.8)
+            .encode(
+                x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
+                y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
+                color=alt.Color("cluster:N", title="Cluster"),
+                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
+            ),
+            use_container_width=True
+        )
+
+        cluster_summary = plot_df.groupby("cluster")[st.session_state.cluster_fields_value].mean().reset_index()
+        st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
+        st.write("Average values per cluster to help compare strategic profiles.")
+        st.dataframe(cluster_summary)
+    else:
+        st.warning("Select at least two numeric fields for clustering.")
+
+    # =========================
+    # Source Bias Heatmap
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Source Bias Heatmap</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Shows which sources are most cited across report sections.</div>",
+        unsafe_allow_html=True
+    )
+
+    sections = []
+    current_title = "Report"
+    current_lines = []
+    for line in report.splitlines():
+        if re.match(r"^\s*\d+\)\s+", line):
+            if current_lines:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+            current_title = re.sub(r"^\s*\d+\)\s+", "", line).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+    if current_lines:
+        sections.append((current_title, "\n".join(current_lines).strip()))
+
+    if sections:
+        heat_rows = []
+        for title, text in sections:
+            for i in range(1, len(docs) + 1):
+                count = len(re.findall(rf"\[Source\s+{i}\]", text))
+                heat_rows.append({"Section": title, "Source": f"Source {i}", "Count": count})
+        heat_df = pd.DataFrame(heat_rows)
+        heat_chart = (
+            alt.Chart(heat_df)
+            .mark_rect()
+            .encode(
+                x=alt.X("Source:N", title="Source"),
+                y=alt.Y("Section:N", title="Section"),
+                color=alt.Color("Count:Q", scale=alt.Scale(scheme="blues"), title="Citations"),
+                tooltip=["Section", "Source", "Count"],
+            )
+        )
+        st.altair_chart(heat_chart, use_container_width=True)
+    else:
+        st.caption("No sections detected to build heatmap.")
