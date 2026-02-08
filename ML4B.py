@@ -922,6 +922,62 @@ if submitted:
             ),
             use_container_width=True,
         )
+
+        st.markdown("<div class='blue-accent'>Profit Pool by Segment</div>", unsafe_allow_html=True)
+        st.write("Estimates where industry profit concentrates by combining revenue and EBITDA margin proxies.")
+        profit_pool = synthetic_df.groupby("segment", as_index=False)[
+            ["revenue_usd_m","ebitda_margin_pct"]
+        ].mean()
+        profit_pool["profit_pool_usd_m"] = (
+            profit_pool["revenue_usd_m"] * (profit_pool["ebitda_margin_pct"] / 100.0)
+        )
+        profit_pool = profit_pool.sort_values("profit_pool_usd_m", ascending=False)
+        st.altair_chart(
+            alt.Chart(profit_pool)
+            .mark_bar()
+            .encode(
+                x=alt.X("segment:N", sort="-y", title="Segment"),
+                y=alt.Y("profit_pool_usd_m:Q", title="Estimated Profit Pool (USD, millions)"),
+                tooltip=["segment", "profit_pool_usd_m"],
+            ),
+            use_container_width=True,
+        )
+
+        st.markdown("<div class='blue-accent'>Margin vs Leverage</div>", unsafe_allow_html=True)
+        st.write("Shows whether profitability is paired with sustainable leverage levels.")
+        md = synthetic_df.groupby("company", as_index=False)[
+            ["ebitda_margin_pct","debt_to_equity","market_share_pct"]
+        ].mean()
+        st.altair_chart(
+            alt.Chart(md)
+            .mark_circle(size=70, opacity=0.7)
+            .encode(
+                x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
+                y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+                size=alt.Size("market_share_pct:Q", title="Market Share"),
+                tooltip=["company", "debt_to_equity", "ebitda_margin_pct", "market_share_pct"],
+            ),
+            use_container_width=True,
+        )
+
+        st.markdown("<div class='blue-accent'>Top 5 Risks (Synthetic)</div>", unsafe_allow_html=True)
+        st.write("Highlights the highest-risk companies based on leverage, supply concentration, and weak growth.")
+        risks = synthetic_df.groupby("company", as_index=False)[
+            ["risk_score","debt_to_equity","supply_concentration","revenue_growth_pct","ebitda_margin_pct"]
+        ].mean()
+        risks = risks.sort_values("risk_score", ascending=False).head(5)
+        risks["risk_reason"] = risks.apply(
+            lambda r: "High leverage" if r["debt_to_equity"] > 2.0 else
+                      "Supply concentration" if r["supply_concentration"] > 0.7 else
+                      "Low growth" if r["revenue_growth_pct"] < 0 else
+                      "Low margin" if r["ebitda_margin_pct"] < 10 else
+                      "Composite risk",
+            axis=1,
+        )
+        st.dataframe(
+            risks[["company","risk_score","debt_to_equity","supply_concentration","revenue_growth_pct","ebitda_margin_pct","risk_reason"]],
+            use_container_width=True,
+        )
     else:
         st.info("Synthetic dataset missing acquisition-style columns for M&A visuals.")
 
