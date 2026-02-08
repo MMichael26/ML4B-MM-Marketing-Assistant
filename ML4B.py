@@ -665,6 +665,16 @@ if submitted:
         unsafe_allow_html=True
     )
 
+    synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
+synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
+
+share_df = (
+    synthetic_df.groupby("company")["market_share_pct"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+    .reset_index()
+)
     # ---- Market Share (Top Companies)
     st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
     st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
