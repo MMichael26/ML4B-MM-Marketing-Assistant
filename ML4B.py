@@ -59,15 +59,6 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Local Development (VS Code) instructions
-# =========================
-with st.expander("Local development setup (optional)", expanded=False):
-    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
-    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
-    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
-
-# =========================
 # Sidebar: API Key input (masked + show toggle)
 # =========================
 st.sidebar.header("API Key")
