@@ -176,37 +176,89 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# Synthetic market research series
+# Synthetic dataset generator
 # =========================
-def generate_market_research_series(industry: str, freq: str = "Q", periods: int = 20):
-    random.seed(abs(hash(industry)) % (2**32))
+random_seed = 42
 
-    start = pd.Timestamp(date.today().year - 5, 1, 1)
-    if freq == "M":
-        date_index = pd.date_range(start=start, periods=periods, freq="M")
+def rand_date(start_year=2020, end_year=2025):
+    start_date = date(start_year, 1, 1)
+    end_date = date(end_year, 12, 31)
+    delta_days = (end_date - start_date).days
+    return (start_date + timedelta(days=random.randint(0, delta_days))).isoformat()
+
+def schema_fast_fashion():
+    brands = ["Zara","H&M","Shein","Forever 21","Uniqlo","Primark","Boohoo","Mango","ASOS"]
+    product_types = ["T-shirt","Jeans","Dress","Hoodie","Sweater","Skirt","Shorts","Jacket"]
+    materials = ["Cotton","Polyester","Viscose","Linen","Nylon","Acrylic","Wool","Blend"]
+    countries = ["Bangladesh","Vietnam","China","India","Turkey","Cambodia","Pakistan","Indonesia"]
+    seasons = ["Spring","Summer","Fall","Winter"]
+    colors = ["Black","White","Blue","Red","Green","Beige","Gray","Pink","Yellow","Brown"]
+
+    columns = [
+        "id","brand","product_type","material","color","price_usd",
+        "production_country","co2_kg","water_l","recycled_pct",
+        "labor_rating","collection_season","release_date"
+    ]
+
+    def row(i):
+        return [
+            i,
+            random.choice(brands),
+            random.choice(product_types),
+            random.choice(materials),
+            random.choice(colors),
+            round(random.uniform(4.99, 89.99), 2),
+            random.choice(countries),
+            round(random.uniform(1.5, 45.0), 2),
+            round(random.uniform(50, 2500), 1),
+            round(random.uniform(0, 60), 1),
+            random.choice(["A","B","C","D","E"]),
+            random.choice(seasons),
+            rand_date(2022, 2025),
+        ]
+
+    return columns, row
+
+def schema_generic(industry_name):
+    columns = [
+        "id","industry","entity","event_date","metric_a","metric_b",
+        "metric_c","region","category","status"
+    ]
+    entities = ["Alpha","Beta","Gamma","Delta","Omega"]
+    regions = ["NA","EU","APAC","LATAM","MEA"]
+    categories = ["Standard","Premium","Enterprise","SMB"]
+    status = ["active","inactive","pending","closed"]
+
+    def row(i):
+        return [
+            i,
+            industry_name,
+            random.choice(entities),
+            rand_date(2020, 2025),
+            round(random.uniform(0, 1000), 2),
+            round(random.uniform(0, 100), 2),
+            round(random.uniform(0, 10), 2),
+            random.choice(regions),
+            random.choice(categories),
+            random.choice(status),
+        ]
+
+    return columns, row
+
+SCHEMAS = {
+    "fast fashion": schema_fast_fashion,
+}
+
+def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
+    random.seed(random_seed)
+    key = industry.strip().lower()
+    if key in SCHEMAS:
+        columns, row_fn = SCHEMAS[key]()
     else:
-        date_index = pd.date_range(start=start, periods=periods, freq="Q")
+        columns, row_fn = schema_generic(industry)
 
-    base_market = random.uniform(10_000, 50_000)
-    data = []
-    market = base_market
-    for d in date_index:
-        growth = random.uniform(-2, 6)
-        market = market * (1 + growth / 100)
-        row = {
-            "period": d.date().isoformat(),
-            "market_size_usd_m": round(market, 2),
-            "growth_rate_pct": round(growth, 2),
-            "avg_price_usd": round(random.uniform(20, 120), 2),
-            "demand_index": round(random.uniform(70, 130), 1),
-            "online_share_pct": round(random.uniform(20, 80), 1),
-            "margin_pct": round(random.uniform(5, 30), 1),
-            "capex_pct": round(random.uniform(2, 15), 1),
-        }
-        data.append(row)
-
-    return pd.DataFrame(data)
-
+    data = [row_fn(i) for i in range(1, rows + 1)]
+    return pd.DataFrame(data, columns=columns)
 
 # =========================
 # Clustering helper
@@ -333,40 +385,140 @@ if submitted:
     )
 
     # =========================
-    # Market Research Trends (Synthetic)
+    # Synthetic Dataset & Analyst-Useful Visuals
     # =========================
-    st.markdown("<h3 class='blue-accent'>Market Research Trends (Synthetic)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Analyst-Useful Visuals</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>A synthetic dataset is generated from the industry name and used to create analyst-friendly visuals.</div>",
+        unsafe_allow_html=True
+    )
 
-    freq_choice = st.radio("View frequency", ["Quarterly", "Monthly"], horizontal=True, key="freq_choice")
-    freq = "Q" if freq_choice == "Quarterly" else "M"
-    periods = 20 if freq == "Q" else 60
-
-    synthetic_df = generate_market_research_series(industry.strip(), freq=freq, periods=periods)
+    synthetic_df = generate_synthetic_df(industry.strip(), rows=200)
 
     csv_buffer = io.StringIO()
     synthetic_df.to_csv(csv_buffer, index=False)
     st.download_button(
-        "Download trend dataset (CSV)",
+        "Download synthetic dataset (CSV)",
         data=csv_buffer.getvalue(),
-        file_name=f"{industry.strip().lower().replace(' ', '_')}_market_trends.csv",
+        file_name=f"{industry.strip().lower().replace(' ', '_')}_synthetic.csv",
         mime="text/csv",
     )
 
-    st.markdown("**Market Size Trend (USD millions)**")
-    st.write("Shows the overall market size trend over time to identify expansion or contraction.")
-    st.line_chart(synthetic_df.set_index("period")["market_size_usd_m"])
+    required_cols = {
+        "price_usd", "co2_kg", "water_l", "recycled_pct",
+        "brand", "material", "production_country"
+    }
+    if required_cols.issubset(set(synthetic_df.columns)):
+        st.markdown("<div class='blue-accent'>Price Distribution</div>", unsafe_allow_html=True)
+        hist = (
+            alt.Chart(synthetic_df)
+            .mark_bar()
+            .encode(
+                alt.X("price_usd:Q", bin=alt.Bin(maxbins=20), title="Price (USD)"),
+                alt.Y("count()", title="Count"),
+            )
+        )
+        st.altair_chart(hist, use_container_width=True)
 
-    st.markdown("**Growth Rate Trend (%)**")
-    st.write("Highlights periods of acceleration or slowdown in the industry’s growth.")
-    st.line_chart(synthetic_df.set_index("period")["growth_rate_pct"])
+        st.markdown("<div class='blue-accent'>Average Price by Brand</div>", unsafe_allow_html=True)
+        avg_price = (
+            synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
+            .sort_values("price_usd", ascending=False)
+        )
+        st.altair_chart(
+            alt.Chart(avg_price)
+            .mark_bar()
+            .encode(
+                x=alt.X("brand:N", sort="-y", title="Brand"),
+                y=alt.Y("price_usd:Q", title="Avg Price (USD)"),
+                tooltip=["brand", alt.Tooltip("price_usd:Q", format=".2f")],
+            ),
+            use_container_width=True,
+        )
 
-    st.markdown("**Demand Index Trend**")
-    st.write("A proxy for consumer demand strength over time; higher values imply stronger demand.")
-    st.line_chart(synthetic_df.set_index("period")["demand_index"])
+        st.markdown("<div class='blue-accent'>CO₂ vs Price (Environmental Cost Proxy)</div>", unsafe_allow_html=True)
+        scatter = (
+            alt.Chart(synthetic_df)
+            .mark_circle(size=60, opacity=0.6)
+            .encode(
+                x=alt.X("price_usd:Q", title="Price (USD)"),
+                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
+                tooltip=["brand", "price_usd", "co2_kg"],
+            )
+        )
+        trend = scatter.transform_regression("price_usd", "co2_kg").mark_line(color="#2563EB")
+        st.altair_chart(scatter + trend, use_container_width=True)
 
-    st.markdown("**Average Price Trend (USD)**")
-    st.write("Tracks pricing shifts, which can signal premiumization or price pressure.")
-    st.line_chart(synthetic_df.set_index("period")["avg_price_usd"])
+        st.markdown("<div class='blue-accent'>Production Country Concentration</div>", unsafe_allow_html=True)
+        country_counts = (
+            synthetic_df["production_country"]
+            .value_counts()
+            .reset_index()
+            .rename(columns={"index": "country", "production_country": "count"})
+        )
+        st.altair_chart(
+            alt.Chart(country_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("country:N", sort="-y", title="Country"),
+                y=alt.Y("count:Q", title="Count"),
+                tooltip=["country", "count"],
+            ),
+            use_container_width=True,
+        )
+
+        st.markdown("<div class='blue-accent'>Recycled % by Material</div>", unsafe_allow_html=True)
+        recycled = (
+            synthetic_df.groupby("material", as_index=False)["recycled_pct"].mean()
+            .sort_values("recycled_pct", ascending=False)
+        )
+        st.altair_chart(
+            alt.Chart(recycled)
+            .mark_bar()
+            .encode(
+                x=alt.X("material:N", sort="-y", title="Material"),
+                y=alt.Y("recycled_pct:Q", title="Avg Recycled %"),
+                tooltip=["material", alt.Tooltip("recycled_pct:Q", format=".1f")],
+            ),
+            use_container_width=True,
+        )
+
+        st.markdown("<div class='blue-accent'>Water Usage vs Price</div>", unsafe_allow_html=True)
+        water_scatter = (
+            alt.Chart(synthetic_df)
+            .mark_circle(size=60, opacity=0.6)
+            .encode(
+                x=alt.X("price_usd:Q", title="Price (USD)"),
+                y=alt.Y("water_l:Q", title="Water (L)"),
+                tooltip=["brand", "price_usd", "water_l"],
+            )
+        )
+        st.altair_chart(water_scatter, use_container_width=True)
+
+        st.markdown("<div class='blue-accent'>Synthetic Cluster Map</div>", unsafe_allow_html=True)
+        st.write(
+            "Groups synthetic records into 3 clusters using price, CO₂, water, and recycled content. "
+            "This helps highlight distinct operational profiles within the dataset."
+        )
+        cluster_features = synthetic_df[["price_usd", "co2_kg", "water_l", "recycled_pct"]].copy()
+        cluster_scaled = (cluster_features - cluster_features.mean()) / (cluster_features.std(ddof=0) + 1e-9)
+        km_syn = KMeans(n_clusters=3, n_init=10, random_state=42)
+        synthetic_df["synthetic_cluster"] = km_syn.fit_predict(cluster_scaled).astype(str)
+
+        cluster_chart = (
+            alt.Chart(synthetic_df)
+            .mark_circle(size=70, opacity=0.7)
+            .encode(
+                x=alt.X("price_usd:Q", title="Price (USD)"),
+                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
+                color=alt.Color("synthetic_cluster:N", title="Cluster"),
+                tooltip=["brand", "price_usd", "co2_kg", "water_l", "recycled_pct", "synthetic_cluster"],
+            )
+        )
+        st.altair_chart(cluster_chart, use_container_width=True)
+
+    else:
+        st.info("Synthetic dataset schema did not include expected fields for analyst visuals.")
 
     # =========================
     # Clustering — only if CSV uploaded
