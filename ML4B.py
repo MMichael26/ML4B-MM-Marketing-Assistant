@@ -2,7 +2,7 @@ import os
 import re
 import io
 import random
-from datetime import date
+from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 import openai
@@ -89,6 +89,7 @@ detail_level = st.sidebar.select_slider(
     options=["Concise", "Standard", "Detailed"],
     value="Standard",
 )
+st.sidebar.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
 
 st.sidebar.header("Data (CSV optional)")
 uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
@@ -175,14 +176,12 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# Synthetic market research dataset (time series)
+# Synthetic market research series
 # =========================
 def generate_market_research_series(industry: str, freq: str = "Q", periods: int = 20):
     random.seed(abs(hash(industry)) % (2**32))
 
-    # Start date 5 years ago
     start = pd.Timestamp(date.today().year - 5, 1, 1)
-
     if freq == "M":
         date_index = pd.date_range(start=start, periods=periods, freq="M")
     else:
@@ -334,11 +333,11 @@ if submitted:
     )
 
     # =========================
-    # Synthetic Market Research Dataset & Visuals
+    # Market Research Trends (Synthetic)
     # =========================
     st.markdown("<h3 class='blue-accent'>Market Research Trends (Synthetic)</h3>", unsafe_allow_html=True)
 
-    freq_choice = st.radio("View frequency", ["Quarterly", "Monthly"], horizontal=True)
+    freq_choice = st.radio("View frequency", ["Quarterly", "Monthly"], horizontal=True, key="freq_choice")
     freq = "Q" if freq_choice == "Quarterly" else "M"
     periods = 20 if freq == "Q" else 60
 
@@ -353,9 +352,20 @@ if submitted:
         mime="text/csv",
     )
 
+    st.markdown("**Market Size Trend (USD millions)**")
+    st.write("Shows the overall market size trend over time to identify expansion or contraction.")
     st.line_chart(synthetic_df.set_index("period")["market_size_usd_m"])
+
+    st.markdown("**Growth Rate Trend (%)**")
+    st.write("Highlights periods of acceleration or slowdown in the industry’s growth.")
     st.line_chart(synthetic_df.set_index("period")["growth_rate_pct"])
+
+    st.markdown("**Demand Index Trend**")
+    st.write("A proxy for consumer demand strength over time; higher values imply stronger demand.")
     st.line_chart(synthetic_df.set_index("period")["demand_index"])
+
+    st.markdown("**Average Price Trend (USD)**")
+    st.write("Tracks pricing shifts, which can signal premiumization or price pressure.")
     st.line_chart(synthetic_df.set_index("period")["avg_price_usd"])
 
     # =========================
