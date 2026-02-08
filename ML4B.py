@@ -666,21 +666,34 @@ if submitted:
     )
 
     # =========================
-    # Visual controls (below Step 3)
+    # Visual controls (below Step 3) — M&A section controls
     # =========================
     with st.form("visual_controls"):
         st.markdown("<div class='section-title'>Visual Controls</div>", unsafe_allow_html=True)
         time_granularity = st.radio(
-            "Trend granularity",
+            "Trend granularity (affects M&A visuals)",
             options=["Monthly", "Annual"],
             horizontal=True
         )
+        show_profit_pool = st.checkbox("Show Profit Pool by Segment", value=True)
+        show_risk_view = st.checkbox("Show Risk vs Supply Concentration", value=True)
+        show_cluster_view = st.checkbox("Show Clustering (K-means)", value=True)
         apply_visuals = st.form_submit_button("Apply visuals")
 
     if "time_granularity_value" not in st.session_state:
         st.session_state.time_granularity_value = time_granularity
+    if "show_profit_pool_value" not in st.session_state:
+        st.session_state.show_profit_pool_value = show_profit_pool
+    if "show_risk_view_value" not in st.session_state:
+        st.session_state.show_risk_view_value = show_risk_view
+    if "show_cluster_view_value" not in st.session_state:
+        st.session_state.show_cluster_view_value = show_cluster_view
+
     if apply_visuals:
         st.session_state.time_granularity_value = time_granularity
+        st.session_state.show_profit_pool_value = show_profit_pool
+        st.session_state.show_risk_view_value = show_risk_view
+        st.session_state.show_cluster_view_value = show_cluster_view
 
     # =========================
     # Synthetic Dataset & M&A-Oriented Visuals
@@ -785,20 +798,21 @@ if submitted:
         use_container_width=True
     )
 
-    # ---- Risk vs Supply Concentration
-    st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
-    st.write("Highlights exposure to supply‑chain concentration risk against composite risk scores.")
-    st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
-            x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
-            y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
-            color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "supply_concentration", "risk_score"],
-        ),
-        use_container_width=True
-    )
+    # ---- Risk vs Supply Concentration (toggle)
+    if st.session_state.show_risk_view_value:
+        st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
+        st.write("Highlights exposure to supply‑chain concentration risk against composite risk scores.")
+        st.altair_chart(
+            alt.Chart(synthetic_df)
+            .mark_circle(size=70, opacity=0.8)
+            .encode(
+                x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
+                y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
+                color=alt.Color("segment:N", title="Segment"),
+                tooltip=["company", "supply_concentration", "risk_score"],
+            ),
+            use_container_width=True
+        )
 
     # ---- Segment Attractiveness
     st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
@@ -832,22 +846,23 @@ if submitted:
     top_targets = target_df.sort_values("target_score", ascending=False).head(5)
     st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
 
-    # ---- Profit Pool by Segment
-    st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
-    st.write("Estimates segment profit pools using revenue × margin as a proxy.")
-    profit_df = synthetic_df.groupby("segment").apply(
-        lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
-    ).reset_index(name="profit_pool")
-    st.altair_chart(
-        alt.Chart(profit_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
-            y=alt.Y("segment:N", sort="-x", title="Segment"),
-            tooltip=["segment", "profit_pool"]
-        ),
-        use_container_width=True
-    )
+    # ---- Profit Pool by Segment (toggle)
+    if st.session_state.show_profit_pool_value:
+        st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
+        st.write("Estimates segment profit pools using revenue × margin as a proxy.")
+        profit_df = synthetic_df.groupby("segment").apply(
+            lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
+        ).reset_index(name="profit_pool")
+        st.altair_chart(
+            alt.Chart(profit_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
+                y=alt.Y("segment:N", sort="-x", title="Segment"),
+                tooltip=["segment", "profit_pool"]
+            ),
+            use_container_width=True
+        )
 
     # ---- Margin vs Leverage
     st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
@@ -884,66 +899,67 @@ if submitted:
     )
 
     # =========================
-    # Clustering (K-means)
+    # Clustering (K-means) — toggle controlled
     # =========================
-    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
-        unsafe_allow_html=True
-    )
-
-    cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
-
-    with st.form("cluster_controls"):
-        st.markdown("**Cluster Controls**")
-        cluster_fields = st.multiselect(
-            "Fields used to cluster",
-            options=cluster_df.columns.tolist(),
-            default=["revenue_growth_pct", "ebitda_margin_pct", "capex_intensity_pct", "risk_score"]
-        )
-        cluster_x = st.selectbox("X-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("revenue_growth_pct"))
-        cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
-        apply_cluster = st.form_submit_button("Apply clustering")
-
-    if "cluster_fields_value" not in st.session_state:
-        st.session_state.cluster_fields_value = cluster_fields
-    if "cluster_x_value" not in st.session_state:
-        st.session_state.cluster_x_value = cluster_x
-    if "cluster_y_value" not in st.session_state:
-        st.session_state.cluster_y_value = cluster_y
-
-    if apply_cluster:
-        st.session_state.cluster_fields_value = cluster_fields
-        st.session_state.cluster_x_value = cluster_x
-        st.session_state.cluster_y_value = cluster_y
-
-    if len(st.session_state.cluster_fields_value) >= 2:
-        scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
-            cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
-        )
-        km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
-        clusters = km.fit_predict(scaled)
-        plot_df = synthetic_df.copy()
-        plot_df["cluster"] = clusters.astype(str)
-
-        st.altair_chart(
-            alt.Chart(plot_df)
-            .mark_circle(size=70, opacity=0.8)
-            .encode(
-                x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
-                y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
-                color=alt.Color("cluster:N", title="Cluster"),
-                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
-            ),
-            use_container_width=True
+    if st.session_state.show_cluster_view_value:
+        st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
+            unsafe_allow_html=True
         )
 
-        cluster_summary = plot_df.groupby("cluster")[st.session_state.cluster_fields_value].mean().reset_index()
-        st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
-        st.write("Average values per cluster to help compare strategic profiles.")
-        st.dataframe(cluster_summary)
-    else:
-        st.warning("Select at least two numeric fields for clustering.")
+        cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
+
+        with st.form("cluster_controls"):
+            st.markdown("**Cluster Controls**")
+            cluster_fields = st.multiselect(
+                "Fields used to cluster",
+                options=cluster_df.columns.tolist(),
+                default=["revenue_growth_pct", "ebitda_margin_pct", "capex_intensity_pct", "risk_score"]
+            )
+            cluster_x = st.selectbox("X-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("revenue_growth_pct"))
+            cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
+            apply_cluster = st.form_submit_button("Apply clustering")
+
+        if "cluster_fields_value" not in st.session_state:
+            st.session_state.cluster_fields_value = cluster_fields
+        if "cluster_x_value" not in st.session_state:
+            st.session_state.cluster_x_value = cluster_x
+        if "cluster_y_value" not in st.session_state:
+            st.session_state.cluster_y_value = cluster_y
+
+        if apply_cluster:
+            st.session_state.cluster_fields_value = cluster_fields
+            st.session_state.cluster_x_value = cluster_x
+            st.session_state.cluster_y_value = cluster_y
+
+        if len(st.session_state.cluster_fields_value) >= 2:
+            scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
+                cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+            )
+            km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
+            clusters = km.fit_predict(scaled)
+            plot_df = synthetic_df.copy()
+            plot_df["cluster"] = clusters.astype(str)
+
+            st.altair_chart(
+                alt.Chart(plot_df)
+                .mark_circle(size=70, opacity=0.8)
+                .encode(
+                    x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
+                    y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
+                    color=alt.Color("cluster:N", title="Cluster"),
+                    tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
+                ),
+                use_container_width=True
+            )
+
+            cluster_summary = plot_df.groupby("cluster")[st.session_state.cluster_fields_value].mean().reset_index()
+            st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
+            st.write("Average values per cluster to help compare strategic profiles.")
+            st.dataframe(cluster_summary)
+        else:
+            st.warning("Select at least two numeric fields for clustering.")
 
     # =========================
     # Source Bias Heatmap
