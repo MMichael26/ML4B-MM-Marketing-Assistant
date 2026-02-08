@@ -58,6 +58,14 @@ st.markdown(
 st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
+# =========================
+# Local Development (VS Code) instructions
+# =========================
+with st.expander("Local development setup (optional)", expanded=False):
+    st.markdown("<h3 class='blue-accent'>Local Development (VS Code)</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Where the key goes (locally)</b><br>You include the key only in your local environment, not in code.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'><b>Option A (recommended): environment variable</b><br><b>Mac/Linux</b></div>", unsafe_allow_html=True)
+    st.code('export OPENAI_API_KEY="sk-..."', language="bash")
 
 # =========================
 # Sidebar: API Key input (masked + show toggle)
@@ -71,33 +79,53 @@ user_key = st.sidebar.text_input(
 )
 
 # =========================
-# Sidebar: Model settings
+# Sidebar: Model settings + Report controls (Apply button)
 # =========================
 with st.sidebar.expander("Advanced settings", expanded=False):
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
-st.sidebar.header("Report Preferences")
-report_focus = st.sidebar.selectbox(
-    "Report focus",
-    [
-        "Balanced",
-        "Acquisition fit",
-        "Market size & growth",
-        "Competitive landscape",
-        "Regulation & risk",
-        "Operations & supply chain",
-    ],
-)
-detail_level = st.sidebar.select_slider(
-    "Detail level",
-    options=["Concise", "Standard", "Detailed"],
-    value="Standard",
-)
-st.sidebar.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
+with st.sidebar.form("controls_form", clear_on_submit=False):
+    st.subheader("Report Preferences")
+    report_focus = st.selectbox(
+        "Report focus",
+        [
+            "Balanced",
+            "Acquisition fit",
+            "Market size & growth",
+            "Competitive landscape",
+            "Regulation & risk",
+            "Operations & supply chain",
+        ],
+        key="report_focus",
+    )
+    detail_level = st.select_slider(
+        "Detail level",
+        options=["Concise", "Standard", "Detailed"],
+        value="Standard",
+        key="detail_level",
+    )
+    st.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
 
-st.sidebar.header("Data (CSV optional)")
-uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
-k_clusters = st.sidebar.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
+    st.subheader("Data (CSV optional)")
+    uploaded_csv = st.file_uploader("Upload CSV for clustering", type=["csv"], key="uploaded_csv")
+    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1, key="k_clusters")
+
+    apply_sidebar = st.form_submit_button("Apply settings")
+
+if "report_focus_value" not in st.session_state:
+    st.session_state.report_focus_value = report_focus
+if "detail_level_value" not in st.session_state:
+    st.session_state.detail_level_value = detail_level
+if "uploaded_csv_value" not in st.session_state:
+    st.session_state.uploaded_csv_value = uploaded_csv
+if "k_clusters_value" not in st.session_state:
+    st.session_state.k_clusters_value = k_clusters
+
+if apply_sidebar:
+    st.session_state.report_focus_value = report_focus
+    st.session_state.detail_level_value = detail_level
+    st.session_state.uploaded_csv_value = uploaded_csv
+    st.session_state.k_clusters_value = k_clusters
 
 
 # =========================
@@ -681,8 +709,8 @@ if submitted:
     user_prompt = (
         f"Industry: {industry.strip()}\n\n"
         "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
-        f"Report focus: {report_focus}.\n"
-        f"Detail level: {detail_level}.\n"
+        f"Report focus: {st.session_state.report_focus_value}.\n"
+        f"Detail level: {st.session_state.detail_level_value}.\n"
         "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
         "Required structure (use these headings):\n"
         "1) Executive snapshot (2–3 sentences)\n"
@@ -970,16 +998,38 @@ if submitted:
             risks[["company","risk_score","debt_to_equity","supply_concentration","revenue_growth_pct","ebitda_margin_pct","risk_reason"]],
             use_container_width=True,
         )
+
+        st.markdown("<div class='blue-accent'>Profit Strategy Summary (Synthetic)</div>", unsafe_allow_html=True)
+        st.write("Summarizes where profits concentrate and what strategic levers appear most attractive.")
+        top_seg = profit_pool.iloc[0] if not profit_pool.empty else None
+        top_target = top5.iloc[0] if not top5.empty else None
+        strategy_points = []
+        if top_seg is not None:
+            strategy_points.append(
+                f"Profit concentration appears strongest in the '{top_seg['segment']}' segment (estimated profit pool: {top_seg['profit_pool_usd_m']:.1f}M)."
+            )
+        if top_target is not None:
+            strategy_points.append(
+                f"Highest synthetic M&A score is '{top_target['company']}' with strong growth and margin profile."
+            )
+        strategy_points.append(
+            "Targets with above-median EBITDA margins and moderate leverage provide more durable profit capture."
+        )
+        strategy_points.append(
+            "Segments with higher growth and margin trade off against supply concentration risk; prioritize balanced profiles."
+        )
+        for point in strategy_points:
+            st.write(f"- {point}")
     else:
         st.info("Synthetic dataset missing acquisition-style columns for M&A visuals.")
 
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
-    if uploaded_csv is None:
+    if st.session_state.uploaded_csv_value is None:
         st.info("Upload a CSV to enable clustering.")
         df = None
     else:
         try:
-            raw = uploaded_csv.getvalue().decode("utf-8")
+            raw = st.session_state.uploaded_csv_value.getvalue().decode("utf-8")
             df = pd.read_csv(io.StringIO(raw))
         except Exception:
             st.warning("Could not read the CSV. Please upload a valid CSV file.")
@@ -990,7 +1040,7 @@ if submitted:
         if numeric_df is None:
             st.warning("CSV needs at least two numeric columns for clustering.")
         else:
-            km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+            km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
             clusters = km.fit_predict(scaled)
             df_plot = numeric_df.copy()
             df_plot["cluster"] = clusters.astype(str)
