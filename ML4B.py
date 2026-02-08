@@ -89,7 +89,6 @@ detail_level = st.sidebar.select_slider(
     options=["Concise", "Standard", "Detailed"],
     value="Standard",
 )
-st.sidebar.caption("Temperature adjusts phrasing variety; facts must still come only from sources.")
 
 st.sidebar.header("Data (CSV optional)")
 uploaded_csv = st.sidebar.file_uploader("Upload CSV for clustering", type=["csv"])
@@ -216,7 +215,6 @@ def schema_fast_fashion():
             random.choice(seasons),
             rand_date(2022, 2025),
         ]
-
     return columns, row
 
 def schema_generic(industry_name):
@@ -242,7 +240,6 @@ def schema_generic(industry_name):
             random.choice(categories),
             random.choice(status),
         ]
-
     return columns, row
 
 SCHEMAS = {
@@ -256,7 +253,6 @@ def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
         columns, row_fn = SCHEMAS[key]()
     else:
         columns, row_fn = schema_generic(industry)
-
     data = [row_fn(i) for i in range(1, rows + 1)]
     return pd.DataFrame(data, columns=columns)
 
@@ -294,9 +290,7 @@ if submitted:
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
-    # =========================
     # Step 2 — Wikipedia sources
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
@@ -325,9 +319,7 @@ if submitted:
             if rank >= 5:
                 break
 
-    # =========================
     # Step 3 — Industry report
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
 
     sources_text = build_sources_text(docs)
@@ -385,11 +377,11 @@ if submitted:
     )
 
     # =========================
-    # Synthetic Dataset & Analyst-Useful Visuals
+    # Synthetic Dataset & Visuals (adaptive)
     # =========================
-    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Analyst-Useful Visuals</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Visuals</h3>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='subtle'>A synthetic dataset is generated from the industry name and used to create analyst-friendly visuals.</div>",
+        "<div class='subtle'>Visuals adapt based on the schema generated for the selected industry.</div>",
         unsafe_allow_html=True
     )
 
@@ -404,121 +396,61 @@ if submitted:
         mime="text/csv",
     )
 
-    required_cols = {
-        "price_usd", "co2_kg", "water_l", "recycled_pct",
-        "brand", "material", "production_country"
-    }
-    if required_cols.issubset(set(synthetic_df.columns)):
+    # Specialized visuals for known schema
+    if {"price_usd","co2_kg","water_l","recycled_pct","brand","material","production_country"}.issubset(synthetic_df.columns):
         st.markdown("<div class='blue-accent'>Price Distribution</div>", unsafe_allow_html=True)
-        hist = (
-            alt.Chart(synthetic_df)
-            .mark_bar()
-            .encode(
-                alt.X("price_usd:Q", bin=alt.Bin(maxbins=20), title="Price (USD)"),
-                alt.Y("count()", title="Count"),
-            )
+        st.write("Shows how prices are distributed across products.")
+        st.altair_chart(
+            alt.Chart(synthetic_df).mark_bar().encode(
+                alt.X("price_usd:Q", bin=alt.Bin(maxbins=20)),
+                alt.Y("count()")
+            ),
+            use_container_width=True,
         )
-        st.altair_chart(hist, use_container_width=True)
 
         st.markdown("<div class='blue-accent'>Average Price by Brand</div>", unsafe_allow_html=True)
-        avg_price = (
-            synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
-            .sort_values("price_usd", ascending=False)
-        )
+        st.write("Compares average price positioning by brand.")
+        avg_price = synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
         st.altair_chart(
-            alt.Chart(avg_price)
-            .mark_bar()
-            .encode(
-                x=alt.X("brand:N", sort="-y", title="Brand"),
-                y=alt.Y("price_usd:Q", title="Avg Price (USD)"),
-                tooltip=["brand", alt.Tooltip("price_usd:Q", format=".2f")],
-            ),
-            use_container_width=True,
+            alt.Chart(avg_price).mark_bar().encode(x="brand", y="price_usd"),
+            use_container_width=True
         )
-
-        st.markdown("<div class='blue-accent'>CO₂ vs Price (Environmental Cost Proxy)</div>", unsafe_allow_html=True)
-        scatter = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=60, opacity=0.6)
-            .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
-                tooltip=["brand", "price_usd", "co2_kg"],
-            )
-        )
-        trend = scatter.transform_regression("price_usd", "co2_kg").mark_line(color="#2563EB")
-        st.altair_chart(scatter + trend, use_container_width=True)
-
-        st.markdown("<div class='blue-accent'>Production Country Concentration</div>", unsafe_allow_html=True)
-        country_counts = (
-            synthetic_df["production_country"]
-            .value_counts()
-            .reset_index()
-            .rename(columns={"index": "country", "production_country": "count"})
-        )
-        st.altair_chart(
-            alt.Chart(country_counts)
-            .mark_bar()
-            .encode(
-                x=alt.X("country:N", sort="-y", title="Country"),
-                y=alt.Y("count:Q", title="Count"),
-                tooltip=["country", "count"],
-            ),
-            use_container_width=True,
-        )
-
-        st.markdown("<div class='blue-accent'>Recycled % by Material</div>", unsafe_allow_html=True)
-        recycled = (
-            synthetic_df.groupby("material", as_index=False)["recycled_pct"].mean()
-            .sort_values("recycled_pct", ascending=False)
-        )
-        st.altair_chart(
-            alt.Chart(recycled)
-            .mark_bar()
-            .encode(
-                x=alt.X("material:N", sort="-y", title="Material"),
-                y=alt.Y("recycled_pct:Q", title="Avg Recycled %"),
-                tooltip=["material", alt.Tooltip("recycled_pct:Q", format=".1f")],
-            ),
-            use_container_width=True,
-        )
-
-        st.markdown("<div class='blue-accent'>Water Usage vs Price</div>", unsafe_allow_html=True)
-        water_scatter = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=60, opacity=0.6)
-            .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("water_l:Q", title="Water (L)"),
-                tooltip=["brand", "price_usd", "water_l"],
-            )
-        )
-        st.altair_chart(water_scatter, use_container_width=True)
-
-        st.markdown("<div class='blue-accent'>Synthetic Cluster Map</div>", unsafe_allow_html=True)
-        st.write(
-            "Groups synthetic records into 3 clusters using price, CO₂, water, and recycled content. "
-            "This helps highlight distinct operational profiles within the dataset."
-        )
-        cluster_features = synthetic_df[["price_usd", "co2_kg", "water_l", "recycled_pct"]].copy()
-        cluster_scaled = (cluster_features - cluster_features.mean()) / (cluster_features.std(ddof=0) + 1e-9)
-        km_syn = KMeans(n_clusters=3, n_init=10, random_state=42)
-        synthetic_df["synthetic_cluster"] = km_syn.fit_predict(cluster_scaled).astype(str)
-
-        cluster_chart = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=70, opacity=0.7)
-            .encode(
-                x=alt.X("price_usd:Q", title="Price (USD)"),
-                y=alt.Y("co2_kg:Q", title="CO₂ (kg)"),
-                color=alt.Color("synthetic_cluster:N", title="Cluster"),
-                tooltip=["brand", "price_usd", "co2_kg", "water_l", "recycled_pct", "synthetic_cluster"],
-            )
-        )
-        st.altair_chart(cluster_chart, use_container_width=True)
-
     else:
-        st.info("Synthetic dataset schema did not include expected fields for analyst visuals.")
+        # Generic visuals for any dataset
+        numeric_cols = synthetic_df.select_dtypes(include=["number"]).columns.tolist()
+        cat_cols = synthetic_df.select_dtypes(include=["object"]).columns.tolist()
+
+        if numeric_cols:
+            st.markdown("<div class='blue-accent'>Numeric Distribution</div>", unsafe_allow_html=True)
+            st.write("Shows distribution of the primary numeric metric.")
+            col = numeric_cols[0]
+            st.altair_chart(
+                alt.Chart(synthetic_df).mark_bar().encode(
+                    alt.X(f"{col}:Q", bin=alt.Bin(maxbins=20)),
+                    alt.Y("count()")
+                ),
+                use_container_width=True
+            )
+
+        if len(numeric_cols) >= 2:
+            st.markdown("<div class='blue-accent'>Correlation Scatter</div>", unsafe_allow_html=True)
+            st.write("Shows relationship between two key numeric metrics.")
+            st.altair_chart(
+                alt.Chart(synthetic_df).mark_circle(size=60, opacity=0.7).encode(
+                    x=numeric_cols[0], y=numeric_cols[1]
+                ),
+                use_container_width=True
+            )
+
+        if cat_cols:
+            st.markdown("<div class='blue-accent'>Category Concentration</div>", unsafe_allow_html=True)
+            st.write("Shows concentration across top categories.")
+            counts = synthetic_df[cat_cols[0]].value_counts().reset_index()
+            counts.columns = ["category", "count"]
+            st.altair_chart(
+                alt.Chart(counts).mark_bar().encode(x="category", y="count"),
+                use_container_width=True
+            )
 
     # =========================
     # Clustering — only if CSV uploaded
@@ -526,7 +458,6 @@ if submitted:
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     if uploaded_csv is None:
         st.info("Upload a CSV to enable clustering.")
-        df = None
     else:
         try:
             raw = uploaded_csv.getvalue().decode("utf-8")
@@ -535,25 +466,19 @@ if submitted:
             st.warning("Could not read the CSV. Please upload a valid CSV file.")
             df = None
 
-    if df is not None:
-        numeric_df, scaled = prepare_for_kmeans(df)
-        if numeric_df is None:
-            st.warning("CSV needs at least two numeric columns for clustering.")
-        else:
-            km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
-            clusters = km.fit_predict(scaled)
-            df_plot = numeric_df.copy()
-            df_plot["cluster"] = clusters.astype(str)
-
-            x_col, y_col = numeric_df.columns[:2]
-            chart = (
-                alt.Chart(df_plot)
-                .mark_circle(size=70, opacity=0.8)
-                .encode(
-                    x=alt.X(x_col, title=x_col),
-                    y=alt.Y(y_col, title=y_col),
-                    color=alt.Color("cluster:N", title="Cluster"),
-                    tooltip=[x_col, y_col, "cluster"],
+        if df is not None:
+            numeric_df, scaled = prepare_for_kmeans(df)
+            if numeric_df is None:
+                st.warning("CSV needs at least two numeric columns for clustering.")
+            else:
+                km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+                clusters = km.fit_predict(scaled)
+                df_plot = numeric_df.copy()
+                df_plot["cluster"] = clusters.astype(str)
+                x_col, y_col = numeric_df.columns[:2]
+                st.altair_chart(
+                    alt.Chart(df_plot).mark_circle(size=70, opacity=0.8).encode(
+                        x=x_col, y=y_col, color="cluster"
+                    ),
+                    use_container_width=True
                 )
-            )
-            st.altair_chart(chart, use_container_width=True)
