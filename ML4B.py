@@ -231,7 +231,7 @@ if submitted:
     urls = extract_urls(docs)
 
     if not urls:
-        st.warning("I couldn't find reliable Wikipedia matches. Please уточнить or rephrase the industry.")
+        st.warning("I couldn't find reliable Wikipedia matches. Please be more specific or rephrase the industry you would like to research.")
         st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
         st.stop()
 
