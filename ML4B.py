@@ -599,12 +599,15 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
              {"role": "user", "content": user_prompt}]
         )
         report = cap_500_words(response.content)
-
-    report = re.sub(r"(?m)^#+\s*", "", report)
+        
+# Clean and format report text
+    report = re.sub(r"(?m)^#+\s*", "", report)  # remove markdown headers
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class='section-title'>\1</div>", report).strip()
     report = report.replace("- **", "").replace("**", "")
 
     st.caption(f"Word count: {len(report.split())} / 500")
+
+    # Use HTML rendering with line breaks preserved
     st.markdown(
         f"""
         <div class="report-box">
