@@ -600,19 +600,19 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         )
         report = cap_500_words(response.content)
 
-report = re.sub(r"(?m)^#+\s*", "", report)
-report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class='section-title'>\1</div>", report).strip()
-report = report.replace("- **", "").replace("**", "")
+    report = re.sub(r"(?m)^#+\s*", "", report)
+    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class='section-title'>\1</div>", report).strip()
+    report = report.replace("- **", "").replace("**", "")
 
-st.caption(f"Word count: {len(report.split())} / 500")
-st.markdown(
-    f"""
-    <div class="report-box">
-    {report.replace("\n", "<br>")}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.caption(f"Word count: {len(report.split())} / 500")
+    st.markdown(
+        f"""
+        <div class="report-box">
+        {report.replace("\n", "<br>")}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     # =========================
     # Synthetic Dataset & M&A Visuals
