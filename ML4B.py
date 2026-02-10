@@ -535,7 +535,7 @@ st.write(
     # =========================
     # Clustering (K-means) — toggle controlled
     # =========================
-    if st.session_state.show_cluster_view_value:
+if st.session_state.show_cluster_view_value:
         st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
         st.markdown(
             "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
