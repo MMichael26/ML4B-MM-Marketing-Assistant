@@ -55,6 +55,12 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
+# Sidebar: Model settings
+# =========================
+with st.sidebar.expander("Advanced settings", expanded=False):
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
+
+# =========================
 # Sidebar: LLM + API Key (Q0)
 # =========================
 st.sidebar.header("Model & API Key")
@@ -66,12 +72,6 @@ user_key = st.sidebar.text_input("OpenAI API Key", type="password")
 
 # Use the selected model when creating the LLM
 llm = ChatOpenAI(model=selected_llm, temperature=temperature, api_key=user_key)
-
-# =========================
-# Sidebar: Model settings
-# =========================
-with st.sidebar.expander("Advanced settings", expanded=False):
-    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
 # Persistent controls (avoid full refresh)
