@@ -324,22 +324,20 @@ st.altair_chart(
     ),
     use_container_width=True
 )
-
-    # ---- Growth vs EBITDA Margin
-    st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
-    st.write("Shows the trade‑off between growth and profitability across synthetic entities.")
-    st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
-            x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
-            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
-            color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
-        ),
-        use_container_width=True
-    )
-
+# ---- Growth vs EBITDA Margin
+st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
+st.write("Shows the trade-off between growth and profitability across synthetic entities.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
     # ---- Revenue Distribution
     st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
     st.write("Shows how revenue is distributed across entities, highlighting size skew.")
