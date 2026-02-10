@@ -55,14 +55,18 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key input (masked + show toggle)
+# Sidebar: LLM + API Key (Q0)
 # =========================
-st.sidebar.header("API Key")
-st.sidebar.write("Enter your OpenAI API key to run the report.")
-user_key = st.sidebar.text_input(
-    "OpenAI API Key",
-    type="password"
-)
+st.sidebar.header("Model & API Key")
+
+llm_options = ["gpt-4o-mini"]  # final version: only ONE option
+selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
+
+user_key = st.sidebar.text_input("OpenAI API Key", type="password")
+
+# Use the selected model when creating the LLM
+llm = ChatOpenAI(model=selected_llm, temperature=temperature, api_key=user_key)
+
 # =========================
 # Sidebar: Model settings
 # =========================
