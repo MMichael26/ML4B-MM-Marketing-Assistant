@@ -298,14 +298,65 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Generate + enrich synthetic data (make sure these functions exist above)
+def generate_synthetic_df(industry: str, rows: int = 240) -> pd.DataFrame:
+    np.random.seed(abs(hash(industry)) % (2**32))
+    schema_fn = pick_schema(industry)
+    columns, row_fn = schema_fn()
+    rows_list = [row_fn(i + 1) for i in range(rows)]
+    return pd.DataFrame(rows_list, columns=columns)
+
+def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
+    rng = np.random.default_rng(abs(hash(industry)) % (2**32))
+    df = df.copy()
+
+    if "company" not in df.columns:
+        df["company"] = df.get("brand", df.get("provider", df.get("maker", df.get("carrier", "Company"))))
+
+    df["company"] = df["company"].astype(str)
+
+    df["segment"] = df.get("segment", None)
+    if df["segment"].isnull().all():
+        df["segment"] = rng.choice(["Core", "Premium", "Value", "Emerging"], size=len(df), replace=True)
+
+    df["region"] = df.get("region", None)
+    if df["region"].isnull().all():
+        df["region"] = rng.choice(["NA", "EU", "APAC", "LATAM", "MEA"], size=len(df), replace=True)
+
+    date_col = None
+    for c in ["release_date", "visit_date", "order_date", "date", "event_date"]:
+        if c in df.columns:
+            date_col = c
+            break
+    if date_col is None:
+        df["event_date"] = pd.to_datetime(
+            rng.choice(pd.date_range("2021-01-01", "2025-12-31"), size=len(df))
+        )
+        date_col = "event_date"
+    df[date_col] = pd.to_datetime(df[date_col])
+
+    df["year"] = df[date_col].dt.year
+    df["month"] = df[date_col].dt.to_period("M").astype(str)
+
+    df["market_share_pct"] = np.clip(rng.normal(5, 2, len(df)), 0.2, 15)
+    df["revenue_usd_m"] = np.clip(rng.normal(250, 120, len(df)), 20, 1200)
+    df["revenue_growth_pct"] = np.clip(rng.normal(8, 6, len(df)), -10, 30)
+    df["ebitda_margin_pct"] = np.clip(rng.normal(18, 7, len(df)), 2, 45)
+    df["capex_intensity_pct"] = np.clip(rng.normal(6, 3, len(df)), 1, 20)
+    df["debt_to_equity"] = np.clip(rng.normal(1.1, 0.6, len(df)), 0, 4.5)
+
+    df["supply_concentration"] = np.clip(rng.normal(0.55, 0.2, len(df)), 0, 1)
+    df["risk_score"] = np.clip(
+        0.5 * (1 - df["supply_concentration"]) + 0.5 * (1 - (df["ebitda_margin_pct"] / 50)),
+        0, 1
+    )
+    return df
+
 synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
 synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
 # ---- Market Share (Top Companies)
 st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
 st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
-
 share_df = (
     synthetic_df.groupby("company")["market_share_pct"]
     .mean()
@@ -313,7 +364,6 @@ share_df = (
     .head(10)
     .reset_index()
 )
-
 st.altair_chart(
     alt.Chart(share_df)
     .mark_bar()
@@ -324,6 +374,7 @@ st.altair_chart(
     ),
     use_container_width=True
 )
+
 # ---- Growth vs EBITDA Margin
 st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
 st.write("Shows the trade-off between growth and profitability across synthetic entities.")
@@ -338,155 +389,148 @@ st.altair_chart(
     ),
     use_container_width=True
 )
+
 # ---- Revenue Distribution
-    st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
-    st.write("Shows how revenue is distributed across entities, highlighting size skew.")
-    st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
-            y=alt.Y("count():Q", title="Count"),
-            tooltip=["count()"],
-        ),
-        use_container_width=True
-    )
+st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
+st.write("Shows how revenue is distributed across entities, highlighting size skew.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
+        y=alt.Y("count():Q", title="Count"),
+        tooltip=["count()"],
+    ),
+    use_container_width=True
+)
 
-    # ---- Revenue Trend (Monthly/Annual)
-    st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
-    st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
-    if st.session_state.time_granularity_value == "Monthly":
-        time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
-        time_col = "month"
-    else:
-        time_df = synthetic_df.groupby("year")["revenue_usd_m"].sum().reset_index()
-        time_col = "year"
+# ---- Revenue Trend (Monthly)
+st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
+st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
+time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
+st.altair_chart(
+    alt.Chart(time_df)
+    .mark_line(point=True)
+    .encode(
+        x=alt.X("month:O", title="Month"),
+        y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
+        tooltip=["month", "revenue_usd_m"],
+    ),
+    use_container_width=True
+)
 
-    st.altair_chart(
-        alt.Chart(time_df)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X(f"{time_col}:O", title=time_col.title()),
-            y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
-            tooltip=[time_col, "revenue_usd_m"],
-        ),
-        use_container_width=True
-    )
+# ---- Capex vs Margin
+st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
+st.write("Identifies which players combine strong margins with capital efficiency.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
 
-    # ---- Capex vs Margin
-    st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
-    st.write("Identifies which players combine strong margins with capital efficiency.")
-    st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
-            x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
-            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
-            color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
-        ),
-        use_container_width=True
-    )
+# ---- Risk vs Supply Concentration
+st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
+st.write("Highlights exposure to supply-chain concentration risk against composite risk scores.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
+        y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "supply_concentration", "risk_score"],
+    ),
+    use_container_width=True
+)
 
-    # ---- Risk vs Supply Concentration (toggle)
-    if st.session_state.show_risk_view_value:
-        st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
-        st.write("Highlights exposure to supply‑chain concentration risk against composite risk scores.")
-        st.altair_chart(
-            alt.Chart(synthetic_df)
-            .mark_circle(size=70, opacity=0.8)
-            .encode(
-                x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
-                y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
-                color=alt.Color("segment:N", title="Segment"),
-                tooltip=["company", "supply_concentration", "risk_score"],
-            ),
-            use_container_width=True
-        )
+# ---- Segment Attractiveness
+st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
+st.write("Compares segments by a composite of growth, margin, and low risk.")
+seg_df = synthetic_df.groupby("segment").agg(
+    avg_growth=("revenue_growth_pct", "mean"),
+    avg_margin=("ebitda_margin_pct", "mean"),
+    avg_risk=("risk_score", "mean")
+).reset_index()
+seg_df["attractiveness"] = (seg_df["avg_growth"] * 0.4 + seg_df["avg_margin"] * 0.5 + (1 - seg_df["avg_risk"]) * 10)
+st.altair_chart(
+    alt.Chart(seg_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("attractiveness:Q", title="Attractiveness Score"),
+        y=alt.Y("segment:N", sort="-x", title="Segment"),
+        tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
+    ),
+    use_container_width=True
+)
 
-    # ---- Segment Attractiveness
-    st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
-    st.write("Compares segments by a composite of growth, margin, and low risk.")
-    seg_df = synthetic_df.groupby("segment").agg(
-        avg_growth=("revenue_growth_pct", "mean"),
-        avg_margin=("ebitda_margin_pct", "mean"),
-        avg_risk=("risk_score", "mean")
-    ).reset_index()
-    seg_df["attractiveness"] = (seg_df["avg_growth"] * 0.4 + seg_df["avg_margin"] * 0.5 + (1 - seg_df["avg_risk"]) * 10)
-    st.altair_chart(
-        alt.Chart(seg_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("attractiveness:Q", title="Attractiveness Score"),
-            y=alt.Y("segment:N", sort="-x", title="Segment"),
-            tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
-        ),
-        use_container_width=True
-    )
+# ---- Top 5 Acquisition Targets
+st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
+st.write("Ranks targets using a composite of growth, margin, and lower risk.")
+target_df = synthetic_df.copy()
+target_df["target_score"] = (
+    target_df["revenue_growth_pct"] * 0.4 +
+    target_df["ebitda_margin_pct"] * 0.5 +
+    (1 - target_df["risk_score"]) * 10
+)
+top_targets = target_df.sort_values("target_score", ascending=False).head(5)
+st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
 
-    # ---- Top 5 Acquisition Targets
-    st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
-    st.write("Ranks targets using a composite of growth, margin, and lower risk.")
-    target_df = synthetic_df.copy()
-    target_df["target_score"] = (
-        target_df["revenue_growth_pct"] * 0.4 +
-        target_df["ebitda_margin_pct"] * 0.5 +
-        (1 - target_df["risk_score"]) * 10
-    )
-    top_targets = target_df.sort_values("target_score", ascending=False).head(5)
-    st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
+# ---- Profit Pool by Segment
+st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
+st.write("Estimates segment profit pools using revenue × margin as a proxy.")
+profit_df = synthetic_df.groupby("segment").apply(
+    lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
+).reset_index(name="profit_pool")
+st.altair_chart(
+    alt.Chart(profit_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
+        y=alt.Y("segment:N", sort="-x", title="Segment"),
+        tooltip=["segment", "profit_pool"]
+    ),
+    use_container_width=True
+)
 
-    # ---- Profit Pool by Segment (toggle)
-    if st.session_state.show_profit_pool_value:
-        st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
-        st.write("Estimates segment profit pools using revenue × margin as a proxy.")
-        profit_df = synthetic_df.groupby("segment").apply(
-            lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
-        ).reset_index(name="profit_pool")
-        st.altair_chart(
-            alt.Chart(profit_df)
-            .mark_bar()
-            .encode(
-                x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
-                y=alt.Y("segment:N", sort="-x", title="Segment"),
-                tooltip=["segment", "profit_pool"]
-            ),
-            use_container_width=True
-        )
+# ---- Margin vs Leverage
+st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
+st.write("Shows whether higher leverage correlates with margin performance.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
 
-    # ---- Margin vs Leverage
-    st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
-    st.write("Shows whether higher leverage correlates with margin performance.")
-    st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
-            x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
-            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
-            color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
-        ),
-        use_container_width=True
-    )
+# ---- Top 5 Risks
+st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
+st.write("Lists the highest-risk entities to flag for diligence.")
+top_risks = synthetic_df.sort_values("risk_score", ascending=False).head(5)
+st.dataframe(top_risks[["company", "segment", "region", "risk_score", "supply_concentration"]])
 
-    # ---- Top 5 Risks
-    st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
-    st.write("Lists the highest‑risk entities to flag for diligence.")
-    top_risks = synthetic_df.sort_values("risk_score", ascending=False).head(5)
-    st.dataframe(top_risks[["company", "segment", "region", "risk_score", "supply_concentration"]])
-
-    # ---- Profit Strategy Summary
-    st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
-    st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
-    st.write(
-        f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
-    )
-    st.write(
-        f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
-    )
-    st.write(
-        f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
-    )
+# ---- Profit Strategy Summary
+st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
+st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
+st.write(
+    f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
+)
+st.write(
+    f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
+)
+st.write(
+    f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
+)
 
     # =========================
     # Clustering (K-means) — toggle controlled
