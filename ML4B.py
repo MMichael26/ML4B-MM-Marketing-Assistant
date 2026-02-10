@@ -600,14 +600,19 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         )
         report = cap_500_words(response.content)
         
-# Clean and format report text
-    report = re.sub(r"(?m)^#+\s*", "", report)  # remove markdown headers
-    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class='section-title'>\1</div>", report).strip()
-    report = report.replace("- **", "").replace("**", "")
+    # Normalize headings into their own lines
+    report = report.replace("###", "\n###")  # ensure headings start on new line
+    report = re.sub(r"\s+", " ", report)     # collapse excess spaces
+    report = report.replace("\n ", "\n")     # clean accidental spaces after newlines
+
+    # Convert headings to styled blocks
+    report = re.sub(r"(?m)^###\s*(.+)$", r"<div class='section-title'>\1</div>", report)
+    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class='section-title'>\1</div>", report)
+
+    # Remove leftover markdown
+    report = report.replace("**", "").strip()
 
     st.caption(f"Word count: {len(report.split())} / 500")
-
-    # Use HTML rendering with line breaks preserved
     st.markdown(
         f"""
         <div class="report-box">
