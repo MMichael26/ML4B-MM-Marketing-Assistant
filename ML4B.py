@@ -259,7 +259,7 @@ if submitted:
                 break
 
     # =========================
-    # Step 3 and the rest of your report/visuals
+    # Step 3 report/visuals
     # =========================
    
     with st.form("visual_controls"):
@@ -289,38 +289,41 @@ if submitted:
         st.session_state.show_risk_view_value = show_risk_view
         st.session_state.show_cluster_view_value = show_cluster_view
 
-    # =========================
-    # Synthetic Dataset & M&A-Oriented Visuals
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition‑style metrics for analyst screening.</div>",
-        unsafe_allow_html=True
-    )
+# =========================
+# Synthetic Dataset & M&A-Oriented Visuals
+# =========================
+st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
+    unsafe_allow_html=True
+)
 
-    synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
-    synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
+# Generate + enrich synthetic data (make sure these functions exist above)
+synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
+synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
-    # ---- Market Share (Top Companies)
-    st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
-    st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
-    share_df = (
-        synthetic_df.groupby("company")["market_share_pct"]
-        .mean()
-        .sort_values(ascending=False)
-        .head(10)
-        .reset_index()
-    )
-    st.altair_chart(
-        alt.Chart(share_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("market_share_pct:Q", title="Market Share (%)"),
-            y=alt.Y("company:N", sort="-x", title="Company"),
-            tooltip=["company", "market_share_pct"],
-        ),
-        use_container_width=True
-    )
+# ---- Market Share (Top Companies)
+st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
+st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
+
+share_df = (
+    synthetic_df.groupby("company")["market_share_pct"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+    .reset_index()
+)
+
+st.altair_chart(
+    alt.Chart(share_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("market_share_pct:Q", title="Market Share (%)"),
+        y=alt.Y("company:N", sort="-x", title="Company"),
+        tooltip=["company", "market_share_pct"],
+    ),
+    use_container_width=True
+)
 
     # ---- Growth vs EBITDA Margin
     st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
