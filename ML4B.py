@@ -65,7 +65,7 @@ with st.sidebar.expander("Advanced settings", expanded=False):
 # =========================
 st.sidebar.header("API Key")
 
-llm_options = ["gpt-4o-mini"]  # final version: only ONE option
+llm_options = ["gpt-4o-mini"]
 selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
 
 user_key = st.sidebar.text_input("OpenAI API Key", type="password")
