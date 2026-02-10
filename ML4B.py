@@ -444,14 +444,120 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
     rng = np.random.default_rng(abs(hash(industry)) % (2**32))
     df = df.copy()
 
+    industry_key = industry.strip().lower()
+
+    name_banks = {
+        "food": ["FreshFoods", "HarvestGroup", "TasteCo", "KitchenWorks", "AgriFoods", "PantryBrands"],
+        "grocery": ["MarketFresh", "DailyGrocer", "ValueFoods", "UrbanMart", "GreenBasket"],
+        "retail": ["MetroRetail", "ValueMart", "ShopLine", "PrimeStores", "EverydayRetail"],
+        "tech": ["TechNova", "InnovaSoft", "NextCloud", "QuantumLabs", "VectorSystems"],
+        "software": ["SoftBridge", "CodeWave", "AppCore", "CloudMint", "StackLabs"],
+        "health": ["CarePlus", "MediCore", "HealthFirst", "WellPoint", "NovaHealth"],
+        "biotech": ["BioNova", "GeneWorks", "HelixLabs", "NeoPharma", "CellCore"],
+        "pharma": ["Medigen", "PharmaCore", "LifeWell", "AcuPharm", "NovaRx"],
+        "fintech": ["PayStream", "FinEdge", "NeoLedger", "FlowBank", "CreditSpring"],
+        "bank": ["CivicBank", "UnionTrust", "MetroBank", "NorthStar Finance", "CapitalWay"],
+        "insurance": ["ShieldSure", "PrimeCover", "SuretyOne", "HarborRisk", "PolicyGuard"],
+        "energy": ["GridWorks", "PowerCore", "RenewCo", "FluxEnergy", "TerraPower"],
+        "oil": ["PetroCore", "DeltaEnergy", "ApexOil", "PrimePetro", "AtlasFuel"],
+        "renewable": ["SunGrid", "WindPeak", "GreenSpark", "EcoVolt", "Solaris"],
+        "logistics": ["RouteLine", "FreightFlow", "CargoLink", "ShipPro", "TransitCore"],
+        "telecom": ["WaveCom", "SignalNet", "MetroTel", "GlobalLink", "SpectrumOne"],
+        "media": ["StreamWorks", "VistaMedia", "Northlight Studios", "EchoBroadcast", "BrightCast"],
+        "hospitality": ["StayWell", "UrbanLodge", "VistaResorts", "HarborHotels", "PrimeStay"],
+        "travel": ["SkyRoute", "VoyageGroup", "GlobalWays", "BlueCompass", "AeroTour"],
+        "automotive": ["DriveWorks", "AutoCore", "VelocityMotors", "RoadLine", "TorqueAuto"],
+        "aerospace": ["AeroDyne", "SkyWorks", "OrbitTech", "StratoSystems", "NovaFlight"],
+        "construction": ["BuildCore", "StoneBridge", "IronPeak", "CivicConstruct", "UrbanBuild"],
+        "real estate": ["PrimeEstate", "MetroLiving", "CivicHomes", "HarborRealty", "Northview Properties"],
+        "agriculture": ["FieldGrow", "HarvestLine", "AgriCore", "GreenLeaf Farms", "TerraAgri"],
+        "chemical": ["ChemCore", "SynthWorks", "ApexChem", "NovaMaterials", "PolyLab"],
+        "materials": ["AlloyWorks", "CoreMaterials", "StonePeak", "TerraMat", "ForgeLine"],
+        "semiconductor": ["SiliconWorks", "ChipCore", "NanoFab", "LogicFoundry", "IonSemis"],
+        "fashion": ["StyleHub", "TrendLane", "UrbanWear", "NovaFashion", "LuxeLine"],
+        "consumer": ["EverydayBrands", "PureHome", "BrightLife", "NovaHouse", "TrueEssentials"],
+        "education": ["EduCore", "BrightPath", "LearnWorks", "NovaAcademy", "SkillPoint"],
+        "security": ["SecureNet", "CyberShield", "AegisTech", "GuardLine", "IronGate"],
+        "mining": ["OreCore", "DeepRock", "TerraMine", "AtlasMinerals", "IronField"],
+        "defense": ["AegisDefense", "ShieldWorks", "TitanSystems", "IronGate Defense", "NovaArmor"],
+        "gaming": ["PixelForge", "GameWave", "Arcadia Studios", "LevelUp Labs", "PlayGrid"],
+        "shipping": ["OceanLink", "HarborLine", "BlueRoute", "SeaBridge", "MaritimeCore"],
+        "utilities": ["CivicUtilities", "GridLine", "PowerFlow", "MetroEnergy", "CityLight"],
+        "electronics": ["NovaElectro", "CircuitWorks", "PulseTech", "BrightWave", "ElectraCore"],
+    }
+
+    segment_banks = {
+        "food": ["Production", "Processing", "Distribution", "Retail", "Food Service"],
+        "grocery": ["Wholesale", "Retail", "Private Label", "Supply Chain"],
+        "retail": ["Online", "Stores", "Private Label", "Logistics"],
+        "tech": ["Platforms", "Infrastructure", "Applications", "Services"],
+        "software": ["SaaS", "Enterprise", "SMB", "Developer Tools"],
+        "health": ["Providers", "Services", "Devices", "Payers"],
+        "biotech": ["R&D", "Clinical", "Manufacturing", "Commercial"],
+        "pharma": ["Branded", "Generics", "Distribution", "Specialty"],
+        "fintech": ["Payments", "Lending", "Wealth", "Infrastructure"],
+        "bank": ["Retail Banking", "SME", "Corporate", "Wealth"],
+        "insurance": ["Life", "Property & Casualty", "Health", "Reinsurance"],
+        "energy": ["Generation", "Transmission", "Distribution", "Retail"],
+        "renewable": ["Solar", "Wind", "Storage", "Grid Services"],
+        "logistics": ["Freight", "Last‑Mile", "Warehousing", "Cold Chain"],
+        "telecom": ["Wireless", "Broadband", "Enterprise", "Infrastructure"],
+        "media": ["Streaming", "Broadcast", "Studios", "Advertising"],
+        "hospitality": ["Hotels", "Resorts", "Restaurants", "Events"],
+        "travel": ["Air", "Rail", "Tours", "Online Travel"],
+        "automotive": ["OEM", "Aftermarket", "EV", "Mobility"],
+        "aerospace": ["Commercial", "Defense", "Avionics", "Maintenance"],
+        "construction": ["Residential", "Commercial", "Infrastructure", "Engineering"],
+        "real estate": ["Residential", "Commercial", "Industrial", "Property Mgmt"],
+        "agriculture": ["Inputs", "Farming", "Processing", "Distribution"],
+        "chemical": ["Commodity", "Specialty", "Agrochem", "Industrial"],
+        "materials": ["Metals", "Polymers", "Composites", "Cement"],
+        "semiconductor": ["Foundry", "Memory", "Logic", "Analog"],
+        "fashion": ["Design", "Manufacturing", "Retail", "E‑commerce"],
+        "consumer": ["Home", "Personal Care", "Beverages", "Household"],
+        "education": ["K‑12", "Higher Ed", "EdTech", "Training"],
+        "security": ["Software", "Hardware", "Services", "Identity"],
+        "mining": ["Exploration", "Extraction", "Processing", "Logistics"],
+        "defense": ["Systems", "Weapons", "Cyber", "Maintenance"],
+        "gaming": ["Mobile", "Console", "PC", "Live Services"],
+        "shipping": ["Containers", "Bulk", "Ports", "Logistics"],
+        "utilities": ["Generation", "Distribution", "Customer Service", "Grid"],
+        "electronics": ["Consumer", "Industrial", "Components", "Devices"],
+    }
+
+    def pick_name_base(industry_key: str):
+        for key, bank in name_banks.items():
+            if key in industry_key:
+                return bank
+        return [f"{industry.title()} Co", f"{industry.title()} Group", f"{industry.title()} Holdings"]
+
+    def pick_segment_base(industry_key: str):
+        for key, bank in segment_banks.items():
+            if key in industry_key:
+                return bank
+        return ["Core", "Premium", "Value", "Emerging"]
+
     if "company" not in df.columns:
-        df["company"] = df.get("brand", df.get("provider", df.get("maker", df.get("carrier", "Company"))))
+        if "brand" in df.columns:
+            df["company"] = df["brand"]
+        elif "provider" in df.columns:
+            df["company"] = df["provider"]
+        elif "maker" in df.columns:
+            df["company"] = df["maker"]
+        elif "carrier" in df.columns:
+            df["company"] = df["carrier"]
+        elif "entity" in df.columns:
+            df["company"] = df["entity"]
+        else:
+            base_names = pick_name_base(industry_key)
+            df["company"] = [f"{rng.choice(base_names)} {i+1}" for i in range(len(df))]
 
     df["company"] = df["company"].astype(str)
 
     df["segment"] = df.get("segment", None)
     if df["segment"].isnull().all():
-        df["segment"] = rng.choice(["Core", "Premium", "Value", "Emerging"], size=len(df), replace=True)
+        segment_names = pick_segment_base(industry_key)
+        df["segment"] = rng.choice(segment_names, size=len(df), replace=True)
 
     df["region"] = df.get("region", None)
     if df["region"].isnull().all():
@@ -484,6 +590,7 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
         0.5 * (1 - df["supply_concentration"]) + 0.5 * (1 - (df["ebitda_margin_pct"] / 50)),
         0, 1
     )
+
     return df
 
 
@@ -537,7 +644,6 @@ if submitted:
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
-    # Lookup immediately in Step 1
     docs = retrieve_wikipedia_docs(industry.strip(), k=5)
     urls = extract_urls(docs)
 
@@ -546,14 +652,9 @@ if submitted:
         st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
         st.stop()
 
-    # =========================
-    # Step 2 — Top Wikipedia sources
-    # =========================
+    # Step 2
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div class='subtle'>These are the five most relevant pages used to generate the report.</div>", unsafe_allow_html=True)
 
     with st.expander("Show sources", expanded=True):
         shown = set()
@@ -569,14 +670,9 @@ if submitted:
             if rank >= 5:
                 break
 
-    # =========================
-    # Step 3 — Industry report
-    # =========================
+    # Step 3
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>", unsafe_allow_html=True)
 
     sources_text = build_sources_text(docs)
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
@@ -624,10 +720,8 @@ if submitted:
 
     with st.spinner("Generating industry briefing…"):
         response = llm.invoke(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": user_prompt}]
         )
         report = cap_500_words(response.content)
 
@@ -635,26 +729,14 @@ if submitted:
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
     report = report.replace("- **", "").replace("**", "")
 
-    word_count = len(report.split())
-    st.caption(f"Word count: {word_count} / 500")
-
-    st.markdown(
-        f"""
-        <div class="report-box">
-        {report.replace("\n", "<br>")}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.caption(f"Word count: {len(report.split())} / 500")
+    st.markdown(f"<div class='report-box'>{report.replace('\\n','<br>')}</div>", unsafe_allow_html=True)
 
     # =========================
     # Synthetic Dataset & M&A-Oriented Visuals
     # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>", unsafe_allow_html=True)
 
     synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
     synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
@@ -664,18 +746,13 @@ if submitted:
     st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
     share_df = (
         synthetic_df.groupby("company")["market_share_pct"]
-        .mean()
-        .sort_values(ascending=False)
-        .head(10)
-        .reset_index()
+        .mean().sort_values(ascending=False).head(10).reset_index()
     )
     st.altair_chart(
-        alt.Chart(share_df)
-        .mark_bar()
-        .encode(
+        alt.Chart(share_df).mark_bar().encode(
             x=alt.X("market_share_pct:Q", title="Market Share (%)"),
             y=alt.Y("company:N", sort="-x", title="Company"),
-            tooltip=["company", "market_share_pct"],
+            tooltip=["company", "market_share_pct"]
         ),
         use_container_width=True
     )
@@ -684,13 +761,11 @@ if submitted:
     st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
     st.write("Shows the trade-off between growth and profitability across synthetic entities.")
     st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
+        alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
             x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
             y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
             color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
+            tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"]
         ),
         use_container_width=True
     )
@@ -699,12 +774,10 @@ if submitted:
     st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
     st.write("Shows how revenue is distributed across entities, highlighting size skew.")
     st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_bar()
-        .encode(
+        alt.Chart(synthetic_df).mark_bar().encode(
             x=alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
             y=alt.Y("count():Q", title="Count"),
-            tooltip=["count()"],
+            tooltip=["count()"]
         ),
         use_container_width=True
     )
@@ -714,12 +787,10 @@ if submitted:
     st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
     time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
     st.altair_chart(
-        alt.Chart(time_df)
-        .mark_line(point=True)
-        .encode(
+        alt.Chart(time_df).mark_line(point=True).encode(
             x=alt.X("month:O", title="Month"),
             y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
-            tooltip=["month", "revenue_usd_m"],
+            tooltip=["month", "revenue_usd_m"]
         ),
         use_container_width=True
     )
@@ -728,13 +799,11 @@ if submitted:
     st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
     st.write("Identifies which players combine strong margins with capital efficiency.")
     st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
+        alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
             x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
             y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
             color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
+            tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"]
         ),
         use_container_width=True
     )
@@ -743,13 +812,11 @@ if submitted:
     st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
     st.write("Highlights exposure to supply-chain concentration risk against composite risk scores.")
     st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
+        alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
             x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
             y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
             color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "supply_concentration", "risk_score"],
+            tooltip=["company", "supply_concentration", "risk_score"]
         ),
         use_container_width=True
     )
@@ -764,9 +831,7 @@ if submitted:
     ).reset_index()
     seg_df["attractiveness"] = (seg_df["avg_growth"] * 0.4 + seg_df["avg_margin"] * 0.5 + (1 - seg_df["avg_risk"]) * 10)
     st.altair_chart(
-        alt.Chart(seg_df)
-        .mark_bar()
-        .encode(
+        alt.Chart(seg_df).mark_bar().encode(
             x=alt.X("attractiveness:Q", title="Attractiveness Score"),
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
@@ -793,9 +858,7 @@ if submitted:
         lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
     ).reset_index(name="profit_pool")
     st.altair_chart(
-        alt.Chart(profit_df)
-        .mark_bar()
-        .encode(
+        alt.Chart(profit_df).mark_bar().encode(
             x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "profit_pool"]
@@ -807,13 +870,11 @@ if submitted:
     st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
     st.write("Shows whether higher leverage correlates with margin performance.")
     st.altair_chart(
-        alt.Chart(synthetic_df)
-        .mark_circle(size=70, opacity=0.8)
-        .encode(
+        alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
             x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
             y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
             color=alt.Color("segment:N", title="Segment"),
-            tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
+            tooltip=["company", "debt_to_equity", "ebitda_margin_pct"]
         ),
         use_container_width=True
     )
@@ -827,15 +888,9 @@ if submitted:
     # ---- Profit Strategy Summary
     st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
     st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
-    st.write(
-        f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
-    )
-    st.write(
-        f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
-    )
-    st.write(
-        f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
-    )
+    st.write(f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**")
+    st.write(f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**")
+    st.write(f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**")
 
     # =========================
     # Clustering (K-means)
@@ -881,13 +936,11 @@ if submitted:
         plot_df["cluster"] = clusters.astype(str)
 
         st.altair_chart(
-            alt.Chart(plot_df)
-            .mark_circle(size=70, opacity=0.8)
-            .encode(
+            alt.Chart(plot_df).mark_circle(size=70, opacity=0.8).encode(
                 x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
                 y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
                 color=alt.Color("cluster:N", title="Cluster"),
-                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
+                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"]
             ),
             use_container_width=True
         )
