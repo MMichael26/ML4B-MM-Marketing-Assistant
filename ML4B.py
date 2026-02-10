@@ -57,12 +57,7 @@ st.caption("Generate a concise, Wikipedia-grounded industry briefing in three st
 # =========================
 # Sidebar: API Key input (masked + show toggle)
 # =========================
-st.sidebar.header("API Key")
-st.sidebar.write("Enter your OpenAI API key to run the report.")
-show_key = st.sidebar.checkbox("Show API key", value=False)
-user_key = st.sidebar.text_input(
-    "OpenAI API Key",
-    type="default" if show_key else "password"
+sst.sidebar.header("API Key")
 st.sidebar.write("Enter your OpenAI API key to run the report.")
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
