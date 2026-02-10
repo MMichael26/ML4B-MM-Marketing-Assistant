@@ -593,8 +593,8 @@ st.markdown(
     # =========================
     # Synthetic Dataset & M&A Visuals
     # =========================
-    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A‑Oriented Visuals</h3>", unsafe_allow_html=True)
-    st.markdown("<div class='subtle'>Synthetic data enriched with acquisition‑style metrics.</div>", unsafe_allow_html=True)
+st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A‑Oriented Visuals</h3>", unsafe_allow_html=True)
+st.markdown("<div class='subtle'>Synthetic data enriched with acquisition‑style metrics.</div>", unsafe_allow_html=True)
 
     synthetic_df = enrich_for_ma(generate_synthetic_df(industry.strip(), 240), industry.strip())
 
