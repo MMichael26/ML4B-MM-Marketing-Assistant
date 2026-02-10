@@ -297,6 +297,34 @@ st.markdown(
     "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
     unsafe_allow_html=True
 )
+SCHEMAS = {
+    "fast fashion": schema_fast_fashion,
+    "healthcare": schema_healthcare,
+    "ecommerce": schema_ecommerce,
+    "semiconductors": schema_semiconductors,
+    "ev batteries": schema_ev_batteries,
+    "retail": schema_retail,
+    "logistics": schema_logistics,
+}
+
+SCHEMA_KEYWORDS = {
+    "fast fashion": ["fashion", "apparel", "textile"],
+    "healthcare": ["health", "medical", "hospital", "pharma"],
+    "ecommerce": ["ecommerce", "e-commerce", "online retail", "marketplace"],
+    "semiconductors": ["semiconductor", "chip", "foundry", "fab"],
+    "ev batteries": ["battery", "ev", "electric vehicle", "lithium"],
+    "retail": ["retail", "supermarket", "grocery", "store"],
+    "logistics": ["logistics", "shipping", "freight", "supply chain"],
+}
+
+def pick_schema(industry: str):
+    key = industry.strip().lower()
+    if key in SCHEMAS:
+        return SCHEMAS[key]
+    for schema_name, kws in SCHEMA_KEYWORDS.items():
+        if any(k in key for k in kws):
+            return SCHEMAS[schema_name]
+    return lambda: schema_generic(industry)
 
 def generate_synthetic_df(industry: str, rows: int = 240) -> pd.DataFrame:
     np.random.seed(abs(hash(industry)) % (2**32))
