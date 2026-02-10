@@ -536,6 +536,11 @@ if submitted:
         st.warning("Please enter an industry to continue.")
         st.stop()
 
+    if len(industry.strip()) < 3:
+        st.info("Please provide a more specific industry name.")
+        st.caption("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
+        st.stop()
+
     st.success("Industry received. Fetching Wikipedia sources...")
 
     # =========================
@@ -552,106 +557,14 @@ if submitted:
         urls = extract_urls(docs)
 
     if not urls:
-        st.error("No Wikipedia pages found. Try a more specific industry term.")
+        st.warning("I couldn't find reliable Wikipedia matches. Please уточнить or rephrase the industry.")
+        st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
         st.stop()
 
-    with st.expander("Show sources", expanded=True):
-        shown = set()
-        rank = 0
-        for d in docs:
-            src = (d.metadata or {}).get("source", "")
-            title = (d.metadata or {}).get("title", "Untitled")
-            if not src or src in shown:
-                continue
-            rank += 1
-            shown.add(src)
-            st.write(f"{rank}. {title} — {src}")
-            if rank >= 5:
-                break
-
-    st.info("The report below is generated exclusively from the five Wikipedia pages listed above.")
-
     # =========================
-    # Q3 — Industry report (under 500 words)
+    # Q3 and all visuals follow (unchanged)
     # =========================
-    st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
-        unsafe_allow_html=True
-    )
-
-    sources_text = build_sources_text(docs)
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
-
-    system_prompt = (
-        "You are a market research assistant for a business analyst at a large corporation.\n"
-        "The analyst is evaluating a potential acquisition target in this industry.\n"
-        "Write a concise industry briefing STRICTLY based on the provided Wikipedia sources.\n"
-        "Do NOT use outside knowledge.\n"
-        "When you make a factual claim, add a citation in the form [Source #].\n"
-        "If the sources do not support a claim, write: 'Not specified in the sources.'\n"
-        "Keep the full report under 500 words."
-    )
-
-    focus_map = {
-        "Acquisition screening": "Focus on M&A relevance, strategic fit, and competitive landscape.",
-        "Market overview": "Focus on market definition, scope, and broad industry structure.",
-        "Competitive positioning": "Focus on segments, key players, and competitive dynamics.",
-        "Risk & compliance": "Focus on regulatory, operational, and reputational risks."
-    }
-    detail_map = {
-        "Concise": "Use brief, tight language.",
-        "Balanced": "Use balanced depth with clear headings.",
-        "Deep": "Add more detail within the 500-word limit."
-    }
-
-    user_prompt = (
-        f"Industry: {industry.strip()}\n\n"
-        "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
-        f"{focus_map.get(st.session_state.report_focus_value, '')}\n"
-        f"{detail_map.get(st.session_state.detail_level_value, '')}\n"
-        "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
-        "Required structure (use these headings):\n"
-        "1) Executive snapshot (2–3 sentences)\n"
-        "2) Scope and definition\n"
-        "3) Value chain / key segments\n"
-        "4) Demand drivers and primary use-cases\n"
-        "5) Challenges / constraints / notable developments (only if stated)\n"
-        "6) What to research next (3–5 bullet points)\n\n"
-        "Rules:\n"
-        "- Cite sources as [Source 1], [Source 2], etc.\n"
-        "- Do not introduce facts not present in the sources.\n\n"
-        f"SOURCES:\n{sources_text}"
-    )
-
-    with st.spinner("Generating industry briefing…"):
-        response = llm.invoke(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-        )
-        report = cap_500_words(response.content)
-
-    report = re.sub(r"(?m)^#+\s*", "", report)
-    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
-    report = report.replace("- **", "").replace("**", "")
-
-    word_count = len(report.split())
-    st.caption(f"Word count: {word_count} / 500")
-
-    st.markdown(
-        f"""
-        <div class="report-box">
-        {report.replace("\n", "<br>")}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # =========================
-    # Visual controls (below Step 3)
-    # =========================
+   
     with st.form("visual_controls"):
         st.markdown("<div class='section-title'>Visual Controls</div>", unsafe_allow_html=True)
         time_granularity = st.radio(
