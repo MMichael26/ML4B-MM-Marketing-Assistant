@@ -63,7 +63,7 @@ with st.sidebar.expander("Advanced settings", expanded=False):
 # =========================
 # Sidebar: LLM + API Key (Q0)
 # =========================
-st.sidebar.header("Model & API Key")
+st.sidebar.header("API Key")
 
 llm_options = ["gpt-4o-mini"]  # final version: only ONE option
 selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
