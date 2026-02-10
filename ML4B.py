@@ -338,7 +338,7 @@ st.altair_chart(
     ),
     use_container_width=True
 )
-    # ---- Revenue Distribution
+# ---- Revenue Distribution
     st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
     st.write("Shows how revenue is distributed across entities, highlighting size skew.")
     st.altair_chart(
