@@ -64,7 +64,6 @@ user_key = st.sidebar.text_input(
     "OpenAI API Key",
     type="default" if show_key else "password"
 )
-
 # =========================
 # Sidebar: Model settings
 # =========================
