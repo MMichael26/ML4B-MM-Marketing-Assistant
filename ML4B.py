@@ -680,14 +680,15 @@ if submitted:
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
 
     system_prompt = (
-        "You are a market research assistant for a business analyst at a large corporation.\n"
-        "The analyst is evaluating a potential acquisition target in this industry.\n"
-        "Write a concise industry briefing STRICTLY based on the provided Wikipedia sources.\n"
-        "Do NOT use outside knowledge.\n"
-        "When you make a factual claim, add a citation in the form [Source #].\n"
-        "If the sources do not support a claim, write: 'Not specified in the sources.'\n"
-        "Keep the full report under 500 words."
-    )
+    "You are a market research assistant for a business analyst at a large corporation.\n"
+    "The analyst is evaluating a potential acquisition target in this industry.\n"
+    "Write a concise industry briefing STRICTLY based on the provided Wikipedia sources.\n"
+    "Do NOT use outside knowledge.\n"
+    "Every paragraph must include at least one citation in the form [Source #].\n"
+    "If the sources do not support a claim, write: 'Not specified in the sources.'\n"
+    "Use an analyst tone: short, precise sentences and no marketing language.\n"
+    "Keep the full report under 500 words."
+)
 
     focus_map = {
         "Acquisition screening": "Focus on M&A relevance, strategic fit, and competitive landscape.",
@@ -702,23 +703,22 @@ if submitted:
     }
 
     user_prompt = (
-        f"Industry: {industry.strip()}\n\n"
-        "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
-        f"{focus_map.get(st.session_state.report_focus_value, '')}\n"
-        f"{detail_map.get(st.session_state.detail_level_value, '')}\n"
-        "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
-        "Required structure (use these headings):\n"
-        "1) Executive snapshot (2–3 sentences)\n"
-        "2) Scope and definition\n"
-        "3) Value chain / key segments\n"
-        "4) Demand drivers and primary use-cases\n"
-        "5) Challenges / constraints / notable developments (only if stated)\n"
-        "6) What to research next (3–5 bullet points)\n\n"
-        "Rules:\n"
-        "- Cite sources as [Source 1], [Source 2], etc.\n"
-        "- Do not introduce facts not present in the sources.\n\n"
-        f"SOURCES:\n{sources_text}"
-    )
+    f"Industry: {industry.strip()}\n\n"
+    "Context: You are preparing this for a business analyst evaluating an acquisition target in this industry.\n"
+    "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
+    "Required structure (use these headings):\n"
+    "1) Executive snapshot (2–3 sentences)\n"
+    "2) Scope and definition\n"
+    "3) Value chain / key segments\n"
+    "4) Demand drivers and primary use-cases\n"
+    "5) Challenges / constraints / notable developments (only if stated)\n"
+    "6) What to research next (3–5 bullet points)\n\n"
+    "Rules:\n"
+    "- Cite sources as [Source 1], [Source 2], etc.\n"
+    "- Avoid repetition.\n"
+    "- Do not introduce facts not present in the sources.\n\n"
+    f"SOURCES:\n{sources_text}"
+)
 
     with st.spinner("Generating industry briefing…"):
         response = llm.invoke(
