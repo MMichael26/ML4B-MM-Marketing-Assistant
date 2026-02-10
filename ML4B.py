@@ -55,6 +55,12 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
+# Sidebar: Model settings
+# =========================
+with st.sidebar.expander("Advanced settings", expanded=False):
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
+
+# =========================
 # Sidebar: LLM + API Key (Q0)
 # =========================
 st.sidebar.header("API Key")
@@ -99,12 +105,6 @@ if apply_controls:
     st.session_state.report_focus_value = report_focus
     st.session_state.detail_level_value = detail_level
     st.session_state.k_clusters_value = k_clusters
-
-# =========================
-# Sidebar: Model settings
-# =========================
-with st.sidebar.expander("Advanced settings", expanded=False):
-    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
 
 # =========================
 # Helper functions
