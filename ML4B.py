@@ -600,133 +600,133 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         )
         report = cap_500_words(response.content)
         
-    # Simple formatting fix
-report = report.replace("###", "\n###")  # ensure headings start on new lines
-report = re.sub(r"(?m)^###\s*(.+)$", r"<div class='section-title'>\1</div>", report)
-report = report.replace("**", "").strip()
+    # Simple formatting fix (inside Step 3 block)
+    report = report.replace("###", "\n###")
+    report = re.sub(r"(?m)^###\s*(.+)$", r"<div class='section-title'>\1</div>", report)
+    report = report.replace("**", "").strip()
 
-st.caption(f"Word count: {len(report.split())} / 500")
-st.markdown(
-    f"""
-    <div class="report-box">
-    {report.replace("\n", "<br>")}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
- # =========================
-# Synthetic Dataset & M&A Visuals
-# =========================
-st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A‑Oriented Visuals</h3>", unsafe_allow_html=True)
-st.markdown("<div class='subtle'>Synthetic data enriched with acquisition‑style metrics.</div>", unsafe_allow_html=True)
-
-synthetic_df = enrich_for_ma(generate_synthetic_df(industry.strip(), 240), industry.strip())
-
-st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
-share_df = (
-    synthetic_df.groupby("company")["market_share_pct"]
-    .mean()
-    .sort_values(ascending=False)
-    .head(10)
-    .reset_index()
-)
-st.altair_chart(
-    alt.Chart(share_df).mark_bar().encode(
-        x=alt.X("market_share_pct:Q", title="Market Share (%)"),
-        y=alt.Y("company:N", sort="-x", title="Company"),
-        tooltip=["company", "market_share_pct"]
-    ),
-    use_container_width=True
-)
-
-st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
-st.altair_chart(
-    alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
-        x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
-        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
-        color=alt.Color("segment:N", title="Segment"),
-        tooltip=["company","segment","revenue_growth_pct","ebitda_margin_pct"]
-    ),
-    use_container_width=True
-)
-
-st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
-time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
-st.altair_chart(
-    alt.Chart(time_df).mark_line(point=True).encode(
-        x=alt.X("month:O", title="Month"),
-        y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
-        tooltip=["month","revenue_usd_m"]
-    ),
-    use_container_width=True
-)
-
-st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
-target_df = synthetic_df.copy()
-target_df["target_score"] = (
-    target_df["revenue_growth_pct"]*0.4
-    + target_df["ebitda_margin_pct"]*0.5
-    + (1 - target_df["risk_score"])*10
-)
-st.dataframe(
-    target_df.sort_values("target_score", ascending=False)
-    .head(5)[["company","segment","region","revenue_growth_pct","ebitda_margin_pct","risk_score","target_score"]]
-)
-
-st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
-st.dataframe(
-    synthetic_df.sort_values("risk_score", ascending=False)
-    .head(5)[["company","segment","region","risk_score","supply_concentration"]]
-)
-
-st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
-
-cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
-with st.form("cluster_controls"):
-    cluster_fields = st.multiselect(
-        "Fields used to cluster",
-        options=cluster_df.columns.tolist(),
-        default=["revenue_growth_pct","ebitda_margin_pct","capex_intensity_pct","risk_score"]
+    st.caption(f"Word count: {len(report.split())} / 500")
+    st.markdown(
+        f"""
+        <div class="report-box">
+        {report.replace("\n", "<br>")}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-    cluster_x = st.selectbox(
-        "X-axis",
-        options=cluster_df.columns.tolist(),
-        index=cluster_df.columns.get_loc("revenue_growth_pct")
-    )
-    cluster_y = st.selectbox(
-        "Y-axis",
-        options=cluster_df.columns.tolist(),
-        index=cluster_df.columns.get_loc("ebitda_margin_pct")
-    )
-    apply_cluster = st.form_submit_button("Apply clustering")
 
-if "cluster_fields_value" not in st.session_state:
-    st.session_state.cluster_fields_value = cluster_fields
-    st.session_state.cluster_x_value = cluster_x
-    st.session_state.cluster_y_value = cluster_y
-if apply_cluster:
-    st.session_state.cluster_fields_value = cluster_fields
-    st.session_state.cluster_x_value = cluster_x
-    st.session_state.cluster_y_value = cluster_y
+    # =========================
+    # Synthetic Dataset & M&A Visuals
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A‑Oriented Visuals</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='subtle'>Synthetic data enriched with acquisition‑style metrics.</div>", unsafe_allow_html=True)
 
-if len(st.session_state.cluster_fields_value) >= 2:
-    scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
-        cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+    synthetic_df = enrich_for_ma(generate_synthetic_df(industry.strip(), 240), industry.strip())
+
+    st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
+    share_df = (
+        synthetic_df.groupby("company")["market_share_pct"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index()
     )
-    km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
-    clusters = km.fit_predict(scaled)
-    plot_df = synthetic_df.copy()
-    plot_df["cluster"] = clusters.astype(str)
-
     st.altair_chart(
-        alt.Chart(plot_df).mark_circle(size=70, opacity=0.8).encode(
-            x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
-            y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
-            color=alt.Color("cluster:N", title="Cluster"),
-            tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"]
+        alt.Chart(share_df).mark_bar().encode(
+            x=alt.X("market_share_pct:Q", title="Market Share (%)"),
+            y=alt.Y("company:N", sort="-x", title="Company"),
+            tooltip=["company", "market_share_pct"]
         ),
         use_container_width=True
     )
-else:
-    st.warning("Select at least two numeric fields for clustering.")
+
+    st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
+    st.altair_chart(
+        alt.Chart(synthetic_df).mark_circle(size=70, opacity=0.8).encode(
+            x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
+            y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+            color=alt.Color("segment:N", title="Segment"),
+            tooltip=["company","segment","revenue_growth_pct","ebitda_margin_pct"]
+        ),
+        use_container_width=True
+    )
+
+    st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
+    time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
+    st.altair_chart(
+        alt.Chart(time_df).mark_line(point=True).encode(
+            x=alt.X("month:O", title="Month"),
+            y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
+            tooltip=["month","revenue_usd_m"]
+        ),
+        use_container_width=True
+    )
+
+    st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
+    target_df = synthetic_df.copy()
+    target_df["target_score"] = (
+        target_df["revenue_growth_pct"]*0.4
+        + target_df["ebitda_margin_pct"]*0.5
+        + (1 - target_df["risk_score"])*10
+    )
+    st.dataframe(
+        target_df.sort_values("target_score", ascending=False)
+        .head(5)[["company","segment","region","revenue_growth_pct","ebitda_margin_pct","risk_score","target_score"]]
+    )
+
+    st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
+    st.dataframe(
+        synthetic_df.sort_values("risk_score", ascending=False)
+        .head(5)[["company","segment","region","risk_score","supply_concentration"]]
+    )
+
+    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
+
+    cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
+    with st.form("cluster_controls"):
+        cluster_fields = st.multiselect(
+            "Fields used to cluster",
+            options=cluster_df.columns.tolist(),
+            default=["revenue_growth_pct","ebitda_margin_pct","capex_intensity_pct","risk_score"]
+        )
+        cluster_x = st.selectbox(
+            "X-axis",
+            options=cluster_df.columns.tolist(),
+            index=cluster_df.columns.get_loc("revenue_growth_pct")
+        )
+        cluster_y = st.selectbox(
+            "Y-axis",
+            options=cluster_df.columns.tolist(),
+            index=cluster_df.columns.get_loc("ebitda_margin_pct")
+        )
+        apply_cluster = st.form_submit_button("Apply clustering")
+
+    if "cluster_fields_value" not in st.session_state:
+        st.session_state.cluster_fields_value = cluster_fields
+        st.session_state.cluster_x_value = cluster_x
+        st.session_state.cluster_y_value = cluster_y
+    if apply_cluster:
+        st.session_state.cluster_fields_value = cluster_fields
+        st.session_state.cluster_x_value = cluster_x
+        st.session_state.cluster_y_value = cluster_y
+
+    if len(st.session_state.cluster_fields_value) >= 2:
+        scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
+            cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+        )
+        km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
+        clusters = km.fit_predict(scaled)
+        plot_df = synthetic_df.copy()
+        plot_df["cluster"] = clusters.astype(str)
+
+        st.altair_chart(
+            alt.Chart(plot_df).mark_circle(size=70, opacity=0.8).encode(
+                x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
+                y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
+                color=alt.Color("cluster:N", title="Cluster"),
+                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"]
+            ),
+            use_container_width=True
+        )
+    else:
+        st.warning("Select at least two numeric fields for clustering.")
