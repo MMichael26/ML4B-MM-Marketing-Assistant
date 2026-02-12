@@ -561,4 +561,7 @@ if submitted:
         st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
         st.stop()
 
-    # ... rest of your app continues here ...
+    # =========================
+    # Q3 and all visuals follow (unchanged)
+    # =========================
+    # ... continue with report + visuals + clustering as before ...
