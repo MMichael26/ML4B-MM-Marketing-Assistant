@@ -66,7 +66,8 @@ selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
 if selected_llm == "Select a model...":
     st.warning("Please select an LLM from the dropdown to continue.")
     st.stop()
-
+    
+show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
     type="default" if show_key else "password"
