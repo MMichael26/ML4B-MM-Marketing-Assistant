@@ -150,48 +150,6 @@ def schema_fast_fashion():
         [("price_usd", 4.99, 89.99, 2), ("co2_kg", 1.5, 45.0, 2), ("water_l", 50, 2500, 1)]
     )
 
-def schema_healthcare():
-    return make_schema("provider",
-        ["St. Mary Hospital","City Clinic","MedPrime","CarePlus","BlueLeaf Health"],
-        "department", ["Cardiology","Oncology","Pediatrics","Orthopedics","Neurology"],
-        [("length_of_stay_days", 0, 14, 0), ("total_cost_usd", 120, 25000, 2)]
-    )
-
-def schema_ecommerce():
-    return make_schema("merchant",
-        ["ShopLine","RetailHub","MarketBridge","NovaStore","PrimeCart"],
-        "category", ["Electronics","Home","Beauty","Sports","Toys","Fashion","Books"],
-        [("unit_price_usd", 5, 1500, 2), ("units", 1, 8, 0), ("discount_pct", 0, 40, 1)]
-    )
-
-def schema_semiconductors():
-    return make_schema("company",
-        ["TSMC","Samsung","Intel","SK Hynix","Micron","GlobalFoundries","UMC"],
-        "segment", ["Foundry","Memory","Logic","Analog","Power","RF"],
-        [("wafer_starts_k", 10, 180, 1), ("yield_pct", 70, 99, 1), ("capex_bil", 0.5, 15, 2)]
-    )
-
-def schema_ev_batteries():
-    return make_schema("maker",
-        ["CATL","LG Energy","Panasonic","BYD","SK On","Samsung SDI"],
-        "segment", ["Passenger EV","Commercial EV","Energy Storage"],
-        [("cost_per_kwh", 70, 180, 2), ("energy_density_whkg", 120, 300, 1), ("capacity_gwh", 1, 50, 2)]
-    )
-
-def schema_retail():
-    return make_schema("banner",
-        ["Walmart","Target","Carrefour","Tesco","Costco","Aldi","Lidl"],
-        "format", ["Hypermarket","Supermarket","Warehouse","Discount","Online"],
-        [("store_sales_usd_m", 5, 400, 2), ("same_store_growth_pct", -5, 15, 2), ("basket_size_usd", 15, 120, 2)]
-    )
-
-def schema_logistics():
-    return make_schema("carrier",
-        ["DHL","FedEx","UPS","Maersk","MSC","DP World","XPO"],
-        "mode", ["Air","Ocean","Road","Rail"],
-        [("shipment_volume_k", 20, 700, 1), ("on_time_pct", 75, 98, 1), ("cost_per_shipment_usd", 50, 900, 2)]
-    )
-
 def schema_financial_services():
     return make_schema("firm",
         ["CivicBank","UnionTrust","MetroBank","CapitalWay","NorthStar Finance"],
@@ -199,151 +157,11 @@ def schema_financial_services():
         [("aum_usd_b", 5, 500, 2), ("net_interest_margin_pct", 1.5, 4.5, 2), ("cost_to_income_pct", 35, 75, 2)]
     )
 
-def schema_energy():
-    return make_schema("company",
-        ["GridWorks","PowerCore","RenewCo","FluxEnergy","TerraPower"],
-        "segment", ["Generation","Transmission","Distribution","Retail"],
-        [("capacity_gw", 1, 50, 2), ("utilization_pct", 60, 95, 1), ("opex_usd_m", 10, 250, 2)]
-    )
-
-def schema_telecom():
-    return make_schema("company",
-        ["WaveCom","SignalNet","MetroTel","GlobalLink","SpectrumOne"],
-        "segment", ["Wireless","Broadband","Enterprise","Infrastructure"],
-        [("arpu_usd", 10, 80, 2), ("churn_pct", 0.5, 3.5, 2), ("capex_pct", 10, 30, 2)]
-    )
-
-def schema_pharma():
-    return make_schema("company",
-        ["Medigen","PharmaCore","LifeWell","AcuPharm","NovaRx"],
-        "segment", ["Branded","Generics","Specialty","Distribution"],
-        [("r_and_d_pct", 5, 25, 2), ("pipeline_assets", 2, 40, 0), ("gross_margin_pct", 30, 85, 2)]
-    )
-
 def schema_software():
     return make_schema("company",
         ["SoftBridge","CodeWave","AppCore","CloudMint","StackLabs"],
         "segment", ["SaaS","Enterprise","SMB","Developer Tools"],
         [("arr_usd_m", 10, 500, 2), ("churn_pct", 1, 10, 2), ("gross_margin_pct", 50, 90, 2)]
-    )
-
-def schema_media():
-    return make_schema("company",
-        ["StreamWorks","VistaMedia","Northlight Studios","EchoBroadcast","BrightCast"],
-        "segment", ["Streaming","Broadcast","Studios","Advertising"],
-        [("subs_m", 1, 60, 2), ("arpu_usd", 3, 20, 2), ("content_spend_usd_m", 10, 300, 2)]
-    )
-
-def schema_automotive():
-    return make_schema("company",
-        ["DriveWorks","AutoCore","VelocityMotors","RoadLine","TorqueAuto"],
-        "segment", ["OEM","Aftermarket","EV","Mobility"],
-        [("units_k", 10, 800, 1), ("gross_margin_pct", 5, 30, 2), ("r_and_d_pct", 2, 12, 2)]
-    )
-
-def schema_real_estate():
-    return make_schema("company",
-        ["PrimeEstate","MetroLiving","CivicHomes","HarborRealty","Northview Properties"],
-        "segment", ["Residential","Commercial","Industrial","Property Mgmt"],
-        [("occupancy_pct", 70, 98, 1), ("rent_usd_sqft", 10, 120, 2), ("cap_rate_pct", 3, 10, 2)]
-    )
-
-def schema_agriculture():
-    return make_schema("company",
-        ["FieldGrow","HarvestLine","AgriCore","GreenLeaf Farms","TerraAgri"],
-        "segment", ["Inputs","Farming","Processing","Distribution"],
-        [("yield_ton_ha", 1, 12, 2), ("cost_usd_ha", 100, 1500, 2), ("price_usd_ton", 80, 600, 2)]
-    )
-
-def schema_construction():
-    return make_schema("company",
-        ["BuildCore","StoneBridge","IronPeak","CivicConstruct","UrbanBuild"],
-        "segment", ["Residential","Commercial","Infrastructure","Engineering"],
-        [("backlog_usd_m", 20, 800, 2), ("margin_pct", 3, 18, 2), ("project_duration_m", 6, 48, 0)]
-    )
-
-def schema_mining():
-    return make_schema("company",
-        ["OreCore","DeepRock","TerraMine","AtlasMinerals","IronField"],
-        "segment", ["Exploration","Extraction","Processing","Logistics"],
-        [("ore_grade_pct", 0.3, 6, 2), ("cash_cost_usd_ton", 20, 200, 2), ("capex_usd_m", 10, 900, 2)]
-    )
-
-def schema_education():
-    return make_schema("company",
-        ["EduCore","BrightPath","LearnWorks","NovaAcademy","SkillPoint"],
-        "segment", ["K‑12","Higher Ed","EdTech","Training"],
-        [("enrollment_k", 1, 500, 1), ("completion_pct", 50, 95, 1), ("tuition_usd", 200, 8000, 2)]
-    )
-
-def schema_defense():
-    return make_schema("company",
-        ["AegisDefense","ShieldWorks","TitanSystems","IronGate Defense","NovaArmor"],
-        "segment", ["Systems","Weapons","Cyber","Maintenance"],
-        [("contract_usd_m", 50, 2000, 2), ("backlog_usd_m", 200, 5000, 2), ("margin_pct", 5, 25, 2)]
-    )
-
-def schema_utilities():
-    return make_schema("company",
-        ["CivicUtilities","GridLine","PowerFlow","MetroEnergy","CityLight"],
-        "segment", ["Generation","Distribution","Customer Service","Grid"],
-        [("customers_m", 0.1, 20, 2), ("outage_minutes", 20, 300, 1), ("capex_usd_m", 20, 1200, 2)]
-    )
-
-def schema_gaming():
-    return make_schema("company",
-        ["PixelForge","GameWave","Arcadia Studios","LevelUp Labs","PlayGrid"],
-        "segment", ["Mobile","Console","PC","Live Services"],
-        [("dau_m", 0.2, 50, 2), ("arppu_usd", 1, 30, 2), ("retention_pct", 15, 60, 1)]
-    )
-
-def schema_travel():
-    return make_schema("company",
-        ["SkyRoute","VoyageGroup","GlobalWays","BlueCompass","AeroTour"],
-        "segment", ["Air","Rail","Tours","Online Travel"],
-        [("bookings_m", 0.1, 15, 2), ("take_rate_pct", 5, 25, 2), ("cancellations_pct", 2, 20, 2)]
-    )
-
-def schema_hospitality():
-    return make_schema("company",
-        ["StayWell","UrbanLodge","VistaResorts","HarborHotels","PrimeStay"],
-        "segment", ["Hotels","Resorts","Restaurants","Events"],
-        [("occupancy_pct", 45, 95, 1), ("adr_usd", 60, 350, 2), ("revpar_usd", 30, 250, 2)]
-    )
-
-def schema_chemicals():
-    return make_schema("company",
-        ["ChemCore","SynthWorks","ApexChem","NovaMaterials","PolyLab"],
-        "segment", ["Commodity","Specialty","Agrochem","Industrial"],
-        [("volume_ktons", 5, 500, 1), ("margin_pct", 5, 30, 2), ("energy_cost_pct", 5, 35, 2)]
-    )
-
-def schema_materials():
-    return make_schema("company",
-        ["AlloyWorks","CoreMaterials","StonePeak","TerraMat","ForgeLine"],
-        "segment", ["Metals","Polymers","Composites","Cement"],
-        [("capacity_ktons", 10, 800, 1), ("utilization_pct", 50, 95, 1), ("price_usd_ton", 150, 1200, 2)]
-    )
-
-def schema_shipping():
-    return make_schema("company",
-        ["OceanLink","HarborLine","BlueRoute","SeaBridge","MaritimeCore"],
-        "segment", ["Containers","Bulk","Ports","Logistics"],
-        [("teu_k", 20, 1200, 1), ("freight_rate_usd", 400, 3500, 2), ("on_time_pct", 60, 95, 1)]
-    )
-
-def schema_consumer_goods():
-    return make_schema("company",
-        ["EverydayBrands","PureHome","BrightLife","NovaHouse","TrueEssentials"],
-        "segment", ["Home","Personal Care","Beverages","Household"],
-        [("sales_usd_m", 20, 1200, 2), ("gross_margin_pct", 20, 60, 2), ("distribution_pts", 100, 50000, 0)]
-    )
-
-def schema_aerospace():
-    return make_schema("company",
-        ["AeroDyne","SkyWorks","OrbitTech","StratoSystems","NovaFlight"],
-        "segment", ["Commercial","Defense","Avionics","Maintenance"],
-        [("orders_usd_m", 50, 3000, 2), ("backlog_usd_m", 200, 8000, 2), ("margin_pct", 5, 25, 2)]
     )
 
 def schema_generic(industry_name):
@@ -355,66 +173,14 @@ def schema_generic(industry_name):
 
 SCHEMAS = {
     "fast fashion": schema_fast_fashion,
-    "healthcare": schema_healthcare,
-    "ecommerce": schema_ecommerce,
-    "semiconductors": schema_semiconductors,
-    "ev batteries": schema_ev_batteries,
-    "retail": schema_retail,
-    "logistics": schema_logistics,
     "financial services": schema_financial_services,
-    "energy": schema_energy,
-    "telecom": schema_telecom,
-    "pharma": schema_pharma,
     "software": schema_software,
-    "media": schema_media,
-    "automotive": schema_automotive,
-    "real estate": schema_real_estate,
-    "agriculture": schema_agriculture,
-    "construction": schema_construction,
-    "mining": schema_mining,
-    "education": schema_education,
-    "defense": schema_defense,
-    "utilities": schema_utilities,
-    "gaming": schema_gaming,
-    "travel": schema_travel,
-    "hospitality": schema_hospitality,
-    "chemicals": schema_chemicals,
-    "materials": schema_materials,
-    "shipping": schema_shipping,
-    "consumer goods": schema_consumer_goods,
-    "aerospace": schema_aerospace,
 }
 
 SCHEMA_KEYWORDS = {
     "fast fashion": ["fashion","apparel","textile"],
-    "healthcare": ["health","medical","hospital","pharma"],
-    "ecommerce": ["ecommerce","e-commerce","online retail","marketplace"],
-    "semiconductors": ["semiconductor","chip","foundry","fab"],
-    "ev batteries": ["battery","ev","electric vehicle","lithium"],
-    "retail": ["retail","supermarket","grocery","store"],
-    "logistics": ["logistics","shipping","freight","supply chain"],
     "financial services": ["bank","finance","fintech","insurance","financial"],
-    "energy": ["energy","power","utility","renewable","oil","gas"],
-    "telecom": ["telecom","wireless","broadband","carrier"],
-    "pharma": ["pharma","drug","biotech"],
     "software": ["software","saas","cloud","app"],
-    "media": ["media","streaming","broadcast","studio"],
-    "automotive": ["auto","vehicle","car","ev"],
-    "real estate": ["real estate","property","housing"],
-    "agriculture": ["agriculture","farming","agri"],
-    "construction": ["construction","infrastructure","engineering"],
-    "mining": ["mining","minerals","ore"],
-    "education": ["education","school","university","edtech"],
-    "defense": ["defense","military","aerospace"],
-    "utilities": ["utilities","grid","power","electric"],
-    "gaming": ["gaming","games","esports"],
-    "travel": ["travel","tourism","airline"],
-    "hospitality": ["hotel","hospitality","resort"],
-    "chemicals": ["chemical","chemicals"],
-    "materials": ["materials","metals","composites"],
-    "shipping": ["shipping","maritime","ports"],
-    "consumer goods": ["consumer","fmcg","household"],
-    "aerospace": ["aerospace","aviation","space"],
 }
 
 def pick_schema(industry: str):
@@ -558,18 +324,25 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
 
     user_prompt = (
         f"Industry: {industry.strip()}\n\n"
-        "Required structure (HEADINGS MUST BE ON THEIR OWN LINE):\n"
-        "### Executive Snapshot\n\n"
-        "### Scope and Definition\n\n"
-        "### Value Chain / Key Segments\n\n"
-        "### Demand Drivers and Primary Use-Cases\n\n"
-        "### Challenges / Constraints / Notable Developments\n\n"
-        "### What to Research Next\n\n"
+        "Return the report in the exact format below. Do NOT add markdown.\n"
+        "FORMAT:\n"
+        "SECTION: Executive Snapshot\n"
+        "<text>\n"
+        "SECTION: Scope and Definition\n"
+        "<text>\n"
+        "SECTION: Value Chain / Key Segments\n"
+        "<text>\n"
+        "SECTION: Demand Drivers and Primary Use-Cases\n"
+        "<text>\n"
+        "SECTION: Challenges / Constraints / Notable Developments\n"
+        "<text>\n"
+        "SECTION: What to Research Next\n"
+        "- <bullet>\n"
+        "- <bullet>\n"
+        "- <bullet>\n\n"
         "Rules:\n"
-        "- Put each heading on its own line.\n"
-        "- Leave a blank line after each heading.\n"
-        "- Cite sources as [Source #].\n"
-        "- Do not introduce facts not present in the sources.\n\n"
+        "- Every paragraph must include citations like [Source #].\n"
+        "- Use only the provided sources.\n"
         f"SOURCES:\n{sources_text}"
     )
 
@@ -580,13 +353,35 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         )
         report = cap_500_words(response.content)
 
-    report = re.sub(r"(Executive Snapshot|Scope and Definition|Value Chain / Key Segments|Demand Drivers and Primary Use-Cases|Challenges / Constraints / Notable Developments|What to Research Next)", r"\n### \\1", report)
-    report = re.sub(r"(?m)^###\s*(.+)$", r"<div class='section-title'>\1</div>", report)
-    report = report.replace("**", "").strip()
+    # Parse strict SECTION format
+    sections = []
+    current_title = None
+    current_lines = []
+
+    for line in report.splitlines():
+        if line.startswith("SECTION:"):
+            if current_title:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+            current_title = line.replace("SECTION:", "").strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_title:
+        sections.append((current_title, "\n".join(current_lines).strip()))
 
     st.caption(f"Word count: {len(report.split())} / 500")
-    st.markdown(f"<div class='report-box'>{report.replace('\n','<br>')}</div>", unsafe_allow_html=True)
+    st.markdown("<div class='report-box'>", unsafe_allow_html=True)
 
+    for title, body in sections:
+        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+        st.markdown(body.replace("\n", "<br>"), unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # =========================
+    # Synthetic Dataset & M&A Visuals
+    # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A‑Oriented Visuals</h3>", unsafe_allow_html=True)
     st.markdown("<div class='subtle'>Synthetic data enriched with acquisition‑style metrics.</div>", unsafe_allow_html=True)
 
