@@ -73,6 +73,12 @@ user_key = st.sidebar.text_input(
     type="default" if show_key else "password"
 )
 
+# ---- Gate UI until API key is entered ----
+api_key = (user_key or "").strip()
+if not api_key:
+    st.info("Please enter your OpenAI API key to continue.")
+    st.stop()
+
 # =========================
 # Sidebar: Report preferences (combined style)
 # =========================
