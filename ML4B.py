@@ -455,10 +455,25 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
     rng = np.random.default_rng(abs(hash(industry)) % (2**32))
     df = df.copy()
 
-    if "company" not in df.columns:
-        df["company"] = df.get("brand", df.get("provider", df.get("maker", df.get("carrier", "Company"))))
+    def make_generic_company_names(industry: str, n: int):
+        base = industry.title()
+        prefixes = ["Global", "Prime", "Blue", "North", "Apex", "Summit", "Civic", "Urban", "Atlas", "Core"]
+        suffixes = ["Holdings", "Group", "Capital", "Partners", "Industries", "Solutions", "Systems", "Ventures", "Corp", "Labs"]
+        return [f"{rng.choice(prefixes)} {base} {rng.choice(suffixes)}" for _ in range(n)]
 
-    df["company"] = df["company"].astype(str)
+    if "company" not in df.columns:
+        for col in ["brand", "provider", "maker", "carrier", "entity", "firm", "banner", "merchant"]:
+            if col in df.columns:
+                df["company"] = df[col].astype(str)
+                break
+        else:
+            df["company"] = make_generic_company_names(industry, len(df))
+    else:
+        df["company"] = df["company"].astype(str)
+
+    # Ensure enough unique companies for meaningful ranking
+    if df["company"].nunique() < 12:
+        df["company"] = make_generic_company_names(industry, len(df))
 
     df["segment"] = df.get("segment", None)
     if df["segment"].isnull().all():
@@ -496,6 +511,7 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
         0, 1
     )
     return df
+
 
 
 # =========================
