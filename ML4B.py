@@ -55,10 +55,18 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key input (masked + show toggle)
+# Sidebar: LLM + API Key (Q0)
 # =========================
-st.sidebar.header("API Key")
-st.sidebar.write("Enter your OpenAI API key to run the report.")
+st.sidebar.header("Model & API Key")
+st.sidebar.write("Select the model and enter your OpenAI API key to run the report.")
+
+llm_options = ["Select a model...", "gpt-4o-mini"]
+selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
+
+if selected_llm == "Select a model...":
+    st.warning("Please select an LLM (gpt-4o-mini) from the dropdown to continue.")
+    st.stop()
+
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
@@ -66,25 +74,23 @@ user_key = st.sidebar.text_input(
 )
 
 # =========================
-# Sidebar: Model settings
-# =========================
-with st.sidebar.expander("Advanced settings", expanded=False):
-    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
-
-# =========================
-# Persistent controls (avoid full refresh)
+# Sidebar: Report preferences (combined style)
 # =========================
 with st.sidebar.form("controls_form"):
     st.markdown("**Report preferences**")
+
+    style_options = {
+        "Crisp & Deterministic": {"detail": "Concise", "temp": 0.2},
+        "Balanced Analyst": {"detail": "Balanced", "temp": 0.3},
+        "Deep Dive": {"detail": "Deep", "temp": 0.4},
+    }
+
+    selected_style = st.selectbox("Report style", list(style_options.keys()), index=1)
+
     report_focus = st.selectbox(
         "Report focus",
         ["Acquisition screening", "Market overview", "Competitive positioning", "Risk & compliance"],
         index=0,
-    )
-    detail_level = st.select_slider(
-        "Detail level",
-        options=["Concise", "Balanced", "Deep"],
-        value="Balanced"
     )
 
     apply_controls = st.form_submit_button("Apply settings")
@@ -92,11 +98,14 @@ with st.sidebar.form("controls_form"):
 if "report_focus_value" not in st.session_state:
     st.session_state.report_focus_value = report_focus
 if "detail_level_value" not in st.session_state:
-    st.session_state.detail_level_value = detail_level
+    st.session_state.detail_level_value = style_options[selected_style]["detail"]
+if "temperature_value" not in st.session_state:
+    st.session_state.temperature_value = style_options[selected_style]["temp"]
 
 if apply_controls:
     st.session_state.report_focus_value = report_focus
-    st.session_state.detail_level_value = detail_level
+    st.session_state.detail_level_value = style_options[selected_style]["detail"]
+    st.session_state.temperature_value = style_options[selected_style]["temp"]
     if "report_value" in st.session_state:
         del st.session_state.report_value
 
@@ -585,7 +594,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     )
 
     sources_text = build_sources_text(docs)
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
+    llm = ChatOpenAI(model=selected_llm, temperature=st.session_state.temperature_value, api_key=user_key)
 
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
