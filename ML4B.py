@@ -110,6 +110,36 @@ def cap_500_words(text: str) -> str:
     words = (text or "").split()
     return " ".join(words[:500]).rstrip() + ("…" if len(words) > 500 else "")
 
+def parse_sections(report_text: str):
+    sections = []
+    current_title = None
+    current_lines = []
+
+    for line in report_text.splitlines():
+        if line.strip().startswith("SECTION:"):
+            if current_title is not None:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+            current_title = line.split("SECTION:", 1)[1].strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_title is not None:
+        sections.append((current_title, "\n".join(current_lines).strip()))
+    return sections
+
+def render_section(title: str, body: str):
+    body = body.replace("**", "").strip()
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    if title.lower().startswith("what to research next"):
+        bullets = [ln.lstrip("-• ").strip() for ln in lines if ln]
+        bullet_html = "<ul>" + "".join(f"<li>{b}</li>" for b in bullets if b) + "</ul>"
+        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+        st.markdown(bullet_html, unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+        st.markdown("<br>".join(lines), unsafe_allow_html=True)
+
 # =========================
 # Synthetic schema helpers
 # =========================
@@ -141,7 +171,7 @@ def make_schema(entity_col, entities, segment_col=None, segments=None, metrics=N
     return columns, row
 
 # =========================
-# Expanded schema library
+# Full schema library (same as before)
 # =========================
 def schema_fast_fashion():
     return make_schema("brand",
@@ -530,7 +560,7 @@ if submitted:
     st.session_state.docs_value = docs
 
 # =========================
-# Step 2 + Step 3 (persisted)
+# Step 2
 # =========================
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
     industry = st.session_state.industry_value
@@ -550,6 +580,13 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             st.write(f"{rank}. {title} — {src}")
             if rank >= 5:
                 break
+
+# =========================
+# Step 3
+# =========================
+if "industry_value" in st.session_state and "docs_value" in st.session_state:
+    industry = st.session_state.industry_value
+    docs = st.session_state.docs_value
 
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown("<div class='subtle'>Business‑analyst style briefing with citations [Source #].</div>", unsafe_allow_html=True)
@@ -599,8 +636,21 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     st.caption(f"Word count: {len(report.split())} / 500")
 
     st.markdown("<div class='report-box'>", unsafe_allow_html=True)
-    for title, body in sections:
-        render_section(title, body)
+    left_col, right_col = st.columns(2, gap="large")
+
+    left_titles = ["Executive Snapshot", "Scope and Definition", "Value Chain / Key Segments"]
+    right_titles = ["Demand Drivers and Primary Use-Cases", "Challenges / Constraints / Notable Developments", "What to Research Next"]
+
+    with left_col:
+        for title, body in sections:
+            if title in left_titles:
+                render_section(title, body)
+
+    with right_col:
+        for title, body in sections:
+            if title in right_titles:
+                render_section(title, body)
+
     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================
