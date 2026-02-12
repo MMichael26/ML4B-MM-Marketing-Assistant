@@ -110,34 +110,6 @@ def cap_500_words(text: str) -> str:
     words = (text or "").split()
     return " ".join(words[:500]).rstrip() + ("…" if len(words) > 500 else "")
 
-def parse_sections(report_text: str):
-    sections = []
-    current_title = None
-    current_lines = []
-    for line in report_text.splitlines():
-        if line.strip().startswith("SECTION:"):
-            if current_title is not None:
-                sections.append((current_title, "\n".join(current_lines).strip()))
-            current_title = line.split("SECTION:", 1)[1].strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-    if current_title is not None:
-        sections.append((current_title, "\n".join(current_lines).strip()))
-    return sections
-
-def render_section(title: str, body: str):
-    body = body.replace("**", "").strip()
-    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
-    if title.lower().startswith("what to research next"):
-        bullets = [ln.lstrip("-• ").strip() for ln in lines if ln]
-        bullet_html = "<ul>" + "".join(f"<li>{b}</li>" for b in bullets if b) + "</ul>"
-        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
-        st.markdown(bullet_html, unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
-        st.markdown("<br>".join(lines), unsafe_allow_html=True)
-
 # =========================
 # Synthetic schema helpers
 # =========================
