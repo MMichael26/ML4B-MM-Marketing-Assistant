@@ -55,15 +55,28 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 # =========================
-# Sidebar: API Key input (masked + show toggle)
+# Sidebar: LLM + API Key (Q0)
 # =========================
-st.sidebar.header("API Key")
-st.sidebar.write("Enter your OpenAI API key to run the report.")
+st.sidebar.header("Model & API Key")
+st.sidebar.write("Select the model and enter your OpenAI API key to run the report.")
+
+llm_options = ["Select a model...", "gpt-4o-mini"]
+selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
+
+if selected_llm == "Select a model...":
+    st.warning("Please select an LLM (gpt-4o-mini) from the dropdown to continue.")
+    st.stop()
+    
 show_key = st.sidebar.checkbox("Show API key", value=False)
 user_key = st.sidebar.text_input(
     "OpenAI API Key",
     type="default" if show_key else "password"
 )
+
+# Enforce explicit model selection
+if selected_llm == "Select a model...":
+    st.warning("Please select an LLM (gpt-4o-mini) from the dropdown to continue.")
+    st.stop()
 
 # =========================
 # Sidebar: Model settings
@@ -584,7 +597,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     )
 
     sources_text = build_sources_text(docs)
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
+    llm = ChatOpenAI(model=selected_llm, temperature=temperature, api_key=user_key)
 
     system_prompt = (
         "You are a market research assistant for a business analyst at a large corporation.\n"
