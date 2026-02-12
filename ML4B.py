@@ -652,7 +652,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         "3) Value chain / key segments\n"
         "4) Demand drivers and primary use-cases\n"
         "5) Challenges / constraints / notable developments (only if stated)\n"
-        "6) What to research next (3–5 bullet points, styled with html bullet points (<ul><li>text</li></ul> etc.)"
+        "6) What to research next (3–5 bullet points, styled with html bullet points (<ul><li>text</li><<li>text</li><<li>text</li><<li>text</li></ul>)"
         "Rules:\n"
         "- Cite sources as [Source 1], [Source 2], etc.\n"
         "- Do not introduce facts not present in the sources.\n\n"
