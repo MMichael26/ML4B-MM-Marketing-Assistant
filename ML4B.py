@@ -673,7 +673,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     report = st.session_state.report_value
     report = re.sub(
         r"(Executive Snapshot|Scope and Definition|Value Chain / Key Segments|Demand Drivers and Primary Use-Cases|Challenges / Constraints / Notable Developments|What to Research Next)",
-        r"\n<strong>\1</strong>",
+        r"\n<strong>\1</strong><br>",
         report
     )
 
