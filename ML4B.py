@@ -671,7 +671,11 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             st.session_state.report_value = report
 
     report = st.session_state.report_value
-    report = re.sub(r"(?m)^(\s*\d+\)\s+)", r"<strong>\1</strong>", report)
+    report = re.sub(
+    r"(?m)^(Executive Snapshot|Scope and Definition|Value Chain / Key Segments|Demand Drivers and Primary Use-Cases|Challenges / Constraints / Notable Developments|What to Research Next)\b",
+    r"<strong>\1</strong>",
+    report
+)
 
     report = re.sub(r"(?m)^#+\s*", "", report)
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
