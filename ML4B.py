@@ -20,7 +20,7 @@ st.markdown(
     .blue-accent { color:#2563EB; font-weight:700; margin-top:0.8rem; }
     .subtle { color:#1F2937; font-size:0.95rem; }
     .report-box { background:#EFF6FF; padding:1.1rem 1.2rem; border-radius:10px; border-left:6px solid #2563EB; }
-    .section-title { font-weight:800; font-size:1.1rem; border-bottom:1px solid #CBD5E1; padding-bottom:6px; margin:14px 0 8px; }
+    .section-title { font-size:1.1rem; border-bottom:1px solid #CBD5E1; padding-bottom:6px; margin:14px 0 8px; }
     code { white-space: pre-wrap; }
     </style>
     """,
