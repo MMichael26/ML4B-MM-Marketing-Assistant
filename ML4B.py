@@ -9,7 +9,6 @@ from sklearn.cluster import KMeans
 from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
 
-
 # =========================
 # Page config
 # =========================
