@@ -87,22 +87,16 @@ with st.sidebar.form("controls_form"):
         value="Balanced"
     )
 
-    st.markdown("**Clustering (synthetic data)**")
-    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
-
     apply_controls = st.form_submit_button("Apply settings")
 
 if "report_focus_value" not in st.session_state:
     st.session_state.report_focus_value = report_focus
 if "detail_level_value" not in st.session_state:
     st.session_state.detail_level_value = detail_level
-if "k_clusters_value" not in st.session_state:
-    st.session_state.k_clusters_value = k_clusters
 
 if apply_controls:
     st.session_state.report_focus_value = report_focus
     st.session_state.detail_level_value = detail_level
-    st.session_state.k_clusters_value = k_clusters
 
 # =========================
 # Helper functions
@@ -846,6 +840,9 @@ if submitted:
         unsafe_allow_html=True
     )
 
+    # --- Moved controls from sidebar to here ---
+    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
+
     cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
 
     with st.form("cluster_controls"):
@@ -875,7 +872,7 @@ if submitted:
         scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
             cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
         )
-        km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
+        km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
         clusters = km.fit_predict(scaled)
         plot_df = synthetic_df.copy()
         plot_df["cluster"] = clusters.astype(str)
