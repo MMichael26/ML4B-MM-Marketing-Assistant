@@ -1,10 +1,8 @@
 import os
 import re
 import io
-import csv
 import random
 from datetime import date, timedelta
-
 import pandas as pd
 import streamlit as st
 import openai
@@ -16,10 +14,13 @@ from langchain_openai import ChatOpenAI
 
 
 # =========================
-# Page config + styling
+# Page config
 # =========================
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
+# =========================
+# Styling
+# =========================
 st.markdown(
     """
     <style>
@@ -140,14 +141,12 @@ def extract_urls(docs):
         src = (d.metadata or {}).get("source", "")
         if src:
             urls.append(src)
-
     seen = set()
     unique = []
     for u in urls:
         if u not in seen:
             unique.append(u)
             seen.add(u)
-
     return unique[:5]
 
 
@@ -176,9 +175,9 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# Synthetic dataset generator (your schema)
+# Synthetic dataset generator
 # =========================
-random.seed(42)
+random_seed = 42
 
 def rand_date(start_year=2020, end_year=2025):
     start_date = date(start_year, 1, 1)
@@ -216,59 +215,6 @@ def schema_fast_fashion():
             random.choice(seasons),
             rand_date(2022, 2025),
         ]
-
-    return columns, row
-
-def schema_healthcare():
-    providers = ["St. Mary Hospital","City Clinic","MedPrime","CarePlus","BlueLeaf Health"]
-    departments = ["Cardiology","Oncology","Pediatrics","Orthopedics","Neurology","ER"]
-    insurance = ["Private","Medicare","Medicaid","Self-Pay"]
-    diagnosis = ["Hypertension","Diabetes","Asthma","Flu","Arthritis","Migraine"]
-
-    columns = [
-        "id","provider","department","visit_date","diagnosis",
-        "length_of_stay_days","total_cost_usd","insurance_type","readmitted"
-    ]
-
-    def row(i):
-        return [
-            i,
-            random.choice(providers),
-            random.choice(departments),
-            rand_date(2021, 2025),
-            random.choice(diagnosis),
-            random.randint(0, 14),
-            round(random.uniform(120, 25000), 2),
-            random.choice(insurance),
-            random.choice(["yes","no"]),
-        ]
-
-    return columns, row
-
-def schema_ecommerce():
-    categories = ["Electronics","Home","Beauty","Sports","Toys","Fashion","Books"]
-    channels = ["Web","Mobile","Marketplace"]
-    regions = ["NA","EU","APAC","LATAM"]
-
-    columns = [
-        "id","order_date","category","unit_price_usd","units",
-        "channel","region","discount_pct","shipping_days","returned"
-    ]
-
-    def row(i):
-        return [
-            i,
-            rand_date(2021, 2025),
-            random.choice(categories),
-            round(random.uniform(5, 1500), 2),
-            random.randint(1, 8),
-            random.choice(channels),
-            random.choice(regions),
-            round(random.uniform(0, 40), 1),
-            random.randint(1, 10),
-            random.choice(["yes","no"]),
-        ]
-
     return columns, row
 
 def schema_generic(industry_name):
@@ -294,16 +240,14 @@ def schema_generic(industry_name):
             random.choice(categories),
             random.choice(status),
         ]
-
     return columns, row
 
 SCHEMAS = {
     "fast fashion": schema_fast_fashion,
-    "healthcare": schema_healthcare,
-    "ecommerce": schema_ecommerce,
 }
 
-def generate_synthetic_df(industry: str, rows: int = 200):
+def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
+    random.seed(random_seed)
     key = industry.strip().lower()
     if key in SCHEMAS:
         columns, row_fn = SCHEMAS[key]()
@@ -346,9 +290,7 @@ if submitted:
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
-    # =========================
     # Step 2 — Wikipedia sources
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
@@ -377,9 +319,7 @@ if submitted:
             if rank >= 5:
                 break
 
-    # =========================
     # Step 3 — Industry report
-    # =========================
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
 
     sources_text = build_sources_text(docs)
@@ -424,7 +364,7 @@ if submitted:
         report = cap_500_words(response.content)
 
     report = re.sub(r"(?m)^#+\s*", "", report)
-    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
+    report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report)
     report = re.sub(r"(?m)^\s*[-*]\s*", "", report).strip()
 
     st.markdown(
@@ -437,9 +377,14 @@ if submitted:
     )
 
     # =========================
-    # Synthetic dataset + visuals (CSV output)
+    # Synthetic Dataset & Visuals (adaptive)
     # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Visuals</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Visuals adapt based on the schema generated for the selected industry.</div>",
+        unsafe_allow_html=True
+    )
+
     synthetic_df = generate_synthetic_df(industry.strip(), rows=200)
 
     csv_buffer = io.StringIO()
@@ -451,17 +396,61 @@ if submitted:
         mime="text/csv",
     )
 
-    # Basic visuals from synthetic dataset
-    numeric_cols = synthetic_df.select_dtypes(include=["number"]).columns.tolist()
-    if len(numeric_cols) >= 2:
-        x_col, y_col = numeric_cols[:2]
-        st.markdown(f"<div class='blue-accent'>Synthetic Scatter: {x_col} vs {y_col}</div>", unsafe_allow_html=True)
-        chart = (
-            alt.Chart(synthetic_df)
-            .mark_circle(size=60, opacity=0.7)
-            .encode(x=x_col, y=y_col, tooltip=synthetic_df.columns.tolist())
+    # Specialized visuals for known schema
+    if {"price_usd","co2_kg","water_l","recycled_pct","brand","material","production_country"}.issubset(synthetic_df.columns):
+        st.markdown("<div class='blue-accent'>Price Distribution</div>", unsafe_allow_html=True)
+        st.write("Shows how prices are distributed across products.")
+        st.altair_chart(
+            alt.Chart(synthetic_df).mark_bar().encode(
+                alt.X("price_usd:Q", bin=alt.Bin(maxbins=20)),
+                alt.Y("count()")
+            ),
+            use_container_width=True,
         )
-        st.altair_chart(chart, use_container_width=True)
+
+        st.markdown("<div class='blue-accent'>Average Price by Brand</div>", unsafe_allow_html=True)
+        st.write("Compares average price positioning by brand.")
+        avg_price = synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
+        st.altair_chart(
+            alt.Chart(avg_price).mark_bar().encode(x="brand", y="price_usd"),
+            use_container_width=True
+        )
+    else:
+        # Generic visuals for any dataset
+        numeric_cols = synthetic_df.select_dtypes(include=["number"]).columns.tolist()
+        cat_cols = synthetic_df.select_dtypes(include=["object"]).columns.tolist()
+
+        if numeric_cols:
+            st.markdown("<div class='blue-accent'>Numeric Distribution</div>", unsafe_allow_html=True)
+            st.write("Shows distribution of the primary numeric metric.")
+            col = numeric_cols[0]
+            st.altair_chart(
+                alt.Chart(synthetic_df).mark_bar().encode(
+                    alt.X(f"{col}:Q", bin=alt.Bin(maxbins=20)),
+                    alt.Y("count()")
+                ),
+                use_container_width=True
+            )
+
+        if len(numeric_cols) >= 2:
+            st.markdown("<div class='blue-accent'>Correlation Scatter</div>", unsafe_allow_html=True)
+            st.write("Shows relationship between two key numeric metrics.")
+            st.altair_chart(
+                alt.Chart(synthetic_df).mark_circle(size=60, opacity=0.7).encode(
+                    x=numeric_cols[0], y=numeric_cols[1]
+                ),
+                use_container_width=True
+            )
+
+        if cat_cols:
+            st.markdown("<div class='blue-accent'>Category Concentration</div>", unsafe_allow_html=True)
+            st.write("Shows concentration across top categories.")
+            counts = synthetic_df[cat_cols[0]].value_counts().reset_index()
+            counts.columns = ["category", "count"]
+            st.altair_chart(
+                alt.Chart(counts).mark_bar().encode(x="category", y="count"),
+                use_container_width=True
+            )
 
     # =========================
     # Clustering — only if CSV uploaded
@@ -486,16 +475,10 @@ if submitted:
                 clusters = km.fit_predict(scaled)
                 df_plot = numeric_df.copy()
                 df_plot["cluster"] = clusters.astype(str)
-
                 x_col, y_col = numeric_df.columns[:2]
-                chart = (
-                    alt.Chart(df_plot)
-                    .mark_circle(size=70, opacity=0.8)
-                    .encode(
-                        x=alt.X(x_col, title=x_col),
-                        y=alt.Y(y_col, title=y_col),
-                        color=alt.Color("cluster:N", title="Cluster"),
-                        tooltip=[x_col, y_col, "cluster"],
-                    )
+                st.altair_chart(
+                    alt.Chart(df_plot).mark_circle(size=70, opacity=0.8).encode(
+                        x=x_col, y=y_col, color="cluster"
+                    ),
+                    use_container_width=True
                 )
-                st.altair_chart(chart, use_container_width=True)
