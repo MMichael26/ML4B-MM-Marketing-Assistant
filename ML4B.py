@@ -175,7 +175,7 @@ def cap_500_words(text: str) -> str:
 
 
 # =========================
-# Synthetic dataset generator
+# Synthetic dataset generators
 # =========================
 random_seed = 42
 
@@ -184,6 +184,28 @@ def rand_date(start_year=2020, end_year=2025):
     end_date = date(end_year, 12, 31)
     delta_days = (end_date - start_date).days
     return (start_date + timedelta(days=random.randint(0, delta_days))).isoformat()
+
+def generate_market_research_series(industry: str, freq: str = "Q", periods: int = 20):
+    random.seed(abs(hash(industry)) % (2**32))
+    start = pd.Timestamp(date.today().year - 5, 1, 1)
+    date_index = pd.date_range(start=start, periods=periods, freq="Q" if freq == "Q" else "M")
+    base_market = random.uniform(10_000, 50_000)
+    data = []
+    market = base_market
+    for d in date_index:
+        growth = random.uniform(-2, 6)
+        market = market * (1 + growth / 100)
+        data.append({
+            "period": d.date().isoformat(),
+            "market_size_usd_m": round(market, 2),
+            "growth_rate_pct": round(growth, 2),
+            "avg_price_usd": round(random.uniform(20, 120), 2),
+            "demand_index": round(random.uniform(70, 130), 1),
+            "online_share_pct": round(random.uniform(20, 80), 1),
+            "margin_pct": round(random.uniform(5, 30), 1),
+            "capex_pct": round(random.uniform(2, 15), 1),
+        })
+    return pd.DataFrame(data)
 
 def schema_fast_fashion():
     brands = ["Zara","H&M","Shein","Forever 21","Uniqlo","Primark","Boohoo","Mango","ASOS"]
@@ -215,6 +237,7 @@ def schema_fast_fashion():
             random.choice(seasons),
             rand_date(2022, 2025),
         ]
+
     return columns, row
 
 def schema_generic(industry_name):
@@ -240,6 +263,7 @@ def schema_generic(industry_name):
             random.choice(categories),
             random.choice(status),
         ]
+
     return columns, row
 
 SCHEMAS = {
@@ -253,6 +277,7 @@ def generate_synthetic_df(industry: str, rows: int = 200) -> pd.DataFrame:
         columns, row_fn = SCHEMAS[key]()
     else:
         columns, row_fn = schema_generic(industry)
+
     data = [row_fn(i) for i in range(1, rows + 1)]
     return pd.DataFrame(data, columns=columns)
 
@@ -377,38 +402,73 @@ if submitted:
     )
 
     # =========================
-    # Synthetic Dataset & Visuals (adaptive)
+    # Market Research Trends (Synthetic)
     # =========================
-    st.markdown("<h3 class='blue-accent'>Synthetic Dataset & Visuals</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>Visuals adapt based on the schema generated for the selected industry.</div>",
-        unsafe_allow_html=True
+    st.markdown("<h3 class='blue-accent'>Market Research Trends (Synthetic)</h3>", unsafe_allow_html=True)
+    freq_choice = st.radio("View frequency", ["Quarterly", "Monthly"], horizontal=True, key="freq_choice")
+    freq = "Q" if freq_choice == "Quarterly" else "M"
+    periods = 20 if freq == "Q" else 60
+
+    trend_df = generate_market_research_series(industry.strip(), freq=freq, periods=periods)
+
+    csv_buffer = io.StringIO()
+    trend_df.to_csv(csv_buffer, index=False)
+    st.download_button(
+        "Download market trends (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name=f"{industry.strip().lower().replace(' ', '_')}_market_trends.csv",
+        mime="text/csv",
     )
+
+    st.markdown("**Market Size Trend (USD millions)**")
+    st.write("Shows overall market expansion or contraction across time periods.")
+    st.line_chart(trend_df.set_index("period")["market_size_usd_m"])
+
+    st.markdown("**Growth Rate Trend (%)**")
+    st.write("Highlights periods of acceleration or slowdown in industry growth.")
+    st.line_chart(trend_df.set_index("period")["growth_rate_pct"])
+
+    st.markdown("**Demand Index Trend**")
+    st.write("Proxy for consumer demand strength over time.")
+    st.line_chart(trend_df.set_index("period")["demand_index"])
+
+    st.markdown("**Average Price Trend (USD)**")
+    st.write("Tracks pricing shifts, indicating premiumization or price pressure.")
+    st.line_chart(trend_df.set_index("period")["avg_price_usd"])
+
+    # =========================
+    # Industry Schema Dataset & Visuals
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Industry Schema Dataset & Visuals</h3>", unsafe_allow_html=True)
+    st.write("Detailed synthetic dataset (if schema exists), useful for operational or ESG‑style analysis.")
 
     synthetic_df = generate_synthetic_df(industry.strip(), rows=200)
 
     csv_buffer = io.StringIO()
     synthetic_df.to_csv(csv_buffer, index=False)
     st.download_button(
-        "Download synthetic dataset (CSV)",
+        "Download industry dataset (CSV)",
         data=csv_buffer.getvalue(),
         file_name=f"{industry.strip().lower().replace(' ', '_')}_synthetic.csv",
         mime="text/csv",
     )
 
-    # Specialized visuals for known schema
-    if {"price_usd","co2_kg","water_l","recycled_pct","brand","material","production_country"}.issubset(synthetic_df.columns):
-        st.markdown("<div class='blue-accent'>Price Distribution</div>", unsafe_allow_html=True)
-        st.write("Shows how prices are distributed across products.")
+    required_cols = {
+        "price_usd", "co2_kg", "water_l", "recycled_pct",
+        "brand", "material", "production_country"
+    }
+    if required_cols.issubset(set(synthetic_df.columns)):
+        st.markdown("**Price Distribution**")
+        st.write("Shows how product prices are distributed across the synthetic catalog.")
         st.altair_chart(
             alt.Chart(synthetic_df).mark_bar().encode(
                 alt.X("price_usd:Q", bin=alt.Bin(maxbins=20)),
                 alt.Y("count()")
             ),
-            use_container_width=True,
+            use_container_width=True
         )
 
-        st.markdown("<div class='blue-accent'>Average Price by Brand</div>", unsafe_allow_html=True)
+        st.markdown("**Average Price by Brand**")
         st.write("Compares average price positioning by brand.")
         avg_price = synthetic_df.groupby("brand", as_index=False)["price_usd"].mean()
         st.altair_chart(
@@ -416,69 +476,4 @@ if submitted:
             use_container_width=True
         )
     else:
-        # Generic visuals for any dataset
-        numeric_cols = synthetic_df.select_dtypes(include=["number"]).columns.tolist()
-        cat_cols = synthetic_df.select_dtypes(include=["object"]).columns.tolist()
-
-        if numeric_cols:
-            st.markdown("<div class='blue-accent'>Numeric Distribution</div>", unsafe_allow_html=True)
-            st.write("Shows distribution of the primary numeric metric.")
-            col = numeric_cols[0]
-            st.altair_chart(
-                alt.Chart(synthetic_df).mark_bar().encode(
-                    alt.X(f"{col}:Q", bin=alt.Bin(maxbins=20)),
-                    alt.Y("count()")
-                ),
-                use_container_width=True
-            )
-
-        if len(numeric_cols) >= 2:
-            st.markdown("<div class='blue-accent'>Correlation Scatter</div>", unsafe_allow_html=True)
-            st.write("Shows relationship between two key numeric metrics.")
-            st.altair_chart(
-                alt.Chart(synthetic_df).mark_circle(size=60, opacity=0.7).encode(
-                    x=numeric_cols[0], y=numeric_cols[1]
-                ),
-                use_container_width=True
-            )
-
-        if cat_cols:
-            st.markdown("<div class='blue-accent'>Category Concentration</div>", unsafe_allow_html=True)
-            st.write("Shows concentration across top categories.")
-            counts = synthetic_df[cat_cols[0]].value_counts().reset_index()
-            counts.columns = ["category", "count"]
-            st.altair_chart(
-                alt.Chart(counts).mark_bar().encode(x="category", y="count"),
-                use_container_width=True
-            )
-
-    # =========================
-    # Clustering — only if CSV uploaded
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
-    if uploaded_csv is None:
-        st.info("Upload a CSV to enable clustering.")
-    else:
-        try:
-            raw = uploaded_csv.getvalue().decode("utf-8")
-            df = pd.read_csv(io.StringIO(raw))
-        except Exception:
-            st.warning("Could not read the CSV. Please upload a valid CSV file.")
-            df = None
-
-        if df is not None:
-            numeric_df, scaled = prepare_for_kmeans(df)
-            if numeric_df is None:
-                st.warning("CSV needs at least two numeric columns for clustering.")
-            else:
-                km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
-                clusters = km.fit_predict(scaled)
-                df_plot = numeric_df.copy()
-                df_plot["cluster"] = clusters.astype(str)
-                x_col, y_col = numeric_df.columns[:2]
-                st.altair_chart(
-                    alt.Chart(df_plot).mark_circle(size=70, opacity=0.8).encode(
-                        x=x_col, y=y_col, color="cluster"
-                    ),
-                    use_container_width=True
-                )
+        st.info("No schema‑specific visuals available for this industry.")
