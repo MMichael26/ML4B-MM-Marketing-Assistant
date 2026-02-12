@@ -733,7 +733,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("company:N", sort="-x", title="Company"),
             tooltip=["company", "market_share_pct"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Growth vs EBITDA Margin
@@ -748,7 +748,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Revenue Distribution
@@ -762,7 +762,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("count():Q", title="Count"),
             tooltip=["count()"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Revenue Trend (Monthly)
@@ -777,7 +777,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
             tooltip=["month", "revenue_usd_m"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Capex vs Margin
@@ -792,7 +792,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Risk vs Supply Concentration
@@ -807,7 +807,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "supply_concentration", "risk_score"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Segment Attractiveness
@@ -827,7 +827,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Top 5 Acquisition Targets
@@ -856,7 +856,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "profit_pool"]
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Margin vs Leverage
@@ -871,7 +871,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
         ),
-        use_container_width=True
+        width="stretch"
     )
 
     # ---- Top 5 Risks
@@ -945,7 +945,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
                 color=alt.Color("cluster:N", title="Cluster"),
                 tooltip=["company", cx, cy, "cluster"],
             ),
-            use_container_width=True
+            width="stretch"
         )
 
         cluster_summary = plot_df.groupby("cluster")[fields].mean().reset_index()
