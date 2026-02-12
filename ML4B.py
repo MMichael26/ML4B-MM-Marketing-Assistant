@@ -486,82 +486,247 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
         0.5 * (1 - df["supply_concentration"]) + 0.5 * (1 - (df["ebitda_margin_pct"] / 50)),
         0, 1
     )
-
     return df
 
+synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
+synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
+
+# ---- Market Share (Top Companies)
+st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
+st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
+share_df = (
+    synthetic_df.groupby("company")["market_share_pct"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+    .reset_index()
+)
+st.altair_chart(
+    alt.Chart(share_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("market_share_pct:Q", title="Market Share (%)"),
+        y=alt.Y("company:N", sort="-x", title="Company"),
+        tooltip=["company", "market_share_pct"],
+    ),
+    use_container_width=True
+)
+
+# ---- Growth vs EBITDA Margin
+st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
+st.write("Shows the trade-off between growth and profitability across synthetic entities.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("revenue_growth_pct:Q", title="Revenue Growth (%)"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
+
+# ---- Revenue Distribution
+st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
+st.write("Shows how revenue is distributed across entities, highlighting size skew.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("revenue_usd_m:Q", bin=alt.Bin(maxbins=20), title="Revenue (USD, millions)"),
+        y=alt.Y("count():Q", title="Count"),
+        tooltip=["count()"],
+    ),
+    use_container_width=True
+)
+
+# ---- Revenue Trend (Monthly)
+st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
+st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
+time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
+st.altair_chart(
+    alt.Chart(time_df)
+    .mark_line(point=True)
+    .encode(
+        x=alt.X("month:O", title="Month"),
+        y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
+        tooltip=["month", "revenue_usd_m"],
+    ),
+    use_container_width=True
+)
+
+# ---- Capex vs Margin
+st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
+st.write("Identifies which players combine strong margins with capital efficiency.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("capex_intensity_pct:Q", title="Capex Intensity (%)"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
+
+# ---- Risk vs Supply Concentration
+st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
+st.write("Highlights exposure to supply-chain concentration risk against composite risk scores.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("supply_concentration:Q", title="Supply Concentration (0–1)"),
+        y=alt.Y("risk_score:Q", title="Risk Score (0–1)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "supply_concentration", "risk_score"],
+    ),
+    use_container_width=True
+)
+
+# ---- Segment Attractiveness
+st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
+st.write("Compares segments by a composite of growth, margin, and low risk.")
+seg_df = synthetic_df.groupby("segment").agg(
+    avg_growth=("revenue_growth_pct", "mean"),
+    avg_margin=("ebitda_margin_pct", "mean"),
+    avg_risk=("risk_score", "mean")
+).reset_index()
+seg_df["attractiveness"] = (seg_df["avg_growth"] * 0.4 + seg_df["avg_margin"] * 0.5 + (1 - seg_df["avg_risk"]) * 10)
+st.altair_chart(
+    alt.Chart(seg_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("attractiveness:Q", title="Attractiveness Score"),
+        y=alt.Y("segment:N", sort="-x", title="Segment"),
+        tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
+    ),
+    use_container_width=True
+)
+
+# ---- Top 5 Acquisition Targets
+st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
+st.write("Ranks targets using a composite of growth, margin, and lower risk.")
+target_df = synthetic_df.copy()
+target_df["target_score"] = (
+    target_df["revenue_growth_pct"] * 0.4 +
+    target_df["ebitda_margin_pct"] * 0.5 +
+    (1 - target_df["risk_score"]) * 10
+)
+top_targets = target_df.sort_values("target_score", ascending=False).head(5)
+st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
+
+# ---- Profit Pool by Segment
+st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
+st.write("Estimates segment profit pools using revenue × margin as a proxy.")
+profit_df = synthetic_df.groupby("segment").apply(
+    lambda d: (d["revenue_usd_m"] * (d["ebitda_margin_pct"] / 100)).sum()
+).reset_index(name="profit_pool")
+st.altair_chart(
+    alt.Chart(profit_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("profit_pool:Q", title="Profit Pool (proxy)"),
+        y=alt.Y("segment:N", sort="-x", title="Segment"),
+        tooltip=["segment", "profit_pool"]
+    ),
+    use_container_width=True
+)
+
+# ---- Margin vs Leverage
+st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
+st.write("Shows whether higher leverage correlates with margin performance.")
+st.altair_chart(
+    alt.Chart(synthetic_df)
+    .mark_circle(size=70, opacity=0.8)
+    .encode(
+        x=alt.X("debt_to_equity:Q", title="Debt to Equity"),
+        y=alt.Y("ebitda_margin_pct:Q", title="EBITDA Margin (%)"),
+        color=alt.Color("segment:N", title="Segment"),
+        tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
+    ),
+    use_container_width=True
+)
+
+# ---- Top 5 Risks
+st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
+st.write("Lists the highest-risk entities to flag for diligence.")
+top_risks = synthetic_df.sort_values("risk_score", ascending=False).head(5)
+st.dataframe(top_risks[["company", "segment", "region", "risk_score", "supply_concentration"]])
+
+# ---- Profit Strategy Summary
+st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
+st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
+st.write(
+    f"- Highest attractiveness segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
+)
+st.write(
+    f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
+)
+st.write(
+    f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
+)
 
 # =========================
-# API key handling
+# Clustering (K-means)
 # =========================
-api_key = (user_key or "").strip()
-if not api_key:
-    st.markdown(
-        """
-        <div style="
-            background:#F8FAFC;
-            border:1px solid #E2E8F0;
-            color:#0F172A;
-            padding:14px 16px;
-            border-radius:10px;
-        ">
-            <strong>Almost there.</strong>
-            Please enter your OpenAI API key in the sidebar to continue.
-            <span style="color:#475569;">It stays on your machine.</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.stop()
-os.environ["OPENAI_API_KEY"] = api_key
-
-
-# =========================
-# UI — Q1
-# =========================
-st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
+st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='subtle'>Tip: be specific (e.g., “Fast fashion”, “Semiconductor industry”, “EV batteries”).</div>",
+    "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
     unsafe_allow_html=True
 )
 
-with st.form("industry_form"):
-    industry = st.text_input(
-        "Industry",
-        placeholder="Try: Fast fashion",
+cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
+
+with st.form("cluster_controls"):
+    st.markdown("**Cluster Controls**")
+    cluster_fields = st.multiselect(
+        "Fields used to cluster",
+        options=cluster_df.columns.tolist(),
+        default=["revenue_growth_pct", "ebitda_margin_pct", "capex_intensity_pct", "risk_score"]
     )
-    submitted = st.form_submit_button("Generate report")
+    cluster_x = st.selectbox("X-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("revenue_growth_pct"))
+    cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
+    apply_cluster = st.form_submit_button("Apply clustering")
 
-if submitted:
-    if not industry_is_valid(industry):
-        st.warning("Please enter an industry to continue.")
-        st.stop()
+if "cluster_fields_value" not in st.session_state:
+    st.session_state.cluster_fields_value = cluster_fields
+if "cluster_x_value" not in st.session_state:
+    st.session_state.cluster_x_value = cluster_x
+if "cluster_y_value" not in st.session_state:
+    st.session_state.cluster_y_value = cluster_y
 
-    if len(industry.strip()) < 3:
-        st.info("Please provide a more specific industry name.")
-        st.caption("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
-        st.stop()
+if apply_cluster:
+    st.session_state.cluster_fields_value = cluster_fields
+    st.session_state.cluster_x_value = cluster_x
+    st.session_state.cluster_y_value = cluster_y
 
-    st.success("Industry received. Fetching Wikipedia sources...")
+if len(st.session_state.cluster_fields_value) >= 2:
+    scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
+        cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+    )
+    km = KMeans(n_clusters=st.session_state.k_clusters_value, n_init=10, random_state=42)
+    clusters = km.fit_predict(scaled)
+    plot_df = synthetic_df.copy()
+    plot_df["cluster"] = clusters.astype(str)
 
-    # =========================
-    # Q2 — URLs of five most relevant Wikipedia pages
-    # =========================
-    st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
-        unsafe_allow_html=True
+    st.altair_chart(
+        alt.Chart(plot_df)
+        .mark_circle(size=70, opacity=0.8)
+        .encode(
+            x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
+            y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
+            color=alt.Color("cluster:N", title="Cluster"),
+            tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
+        ),
+        use_container_width=True
     )
 
-    with st.spinner("Retrieving the five most relevant Wikipedia pages…"):
-        docs = retrieve_wikipedia_docs(industry.strip(), k=5)
-        urls = extract_urls(docs)
-
-    if not urls:
-        st.warning("I couldn't find reliable Wikipedia matches. Please уточнить or rephrase the industry.")
-        st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
-        st.stop()
-
-    # =========================
-    # Q3 and all visuals follow (unchanged)
-    # =========================
-    # ... continue with report + visuals + clustering as before ...
+    cluster_summary = plot_df.groupby("cluster")[st.session_state.cluster_fields_value].mean().reset_index()
+    st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
+    st.write("Average values per cluster to help compare strategic profiles.")
+    st.dataframe(cluster_summary)
+else:
+    st.warning("Select at least two numeric fields for clustering.")
