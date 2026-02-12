@@ -531,7 +531,6 @@ if submitted:
 
     st.success("Industry received. Fetching Wikipedia sources...")
 
-    # Lookup immediately in Step 1
     docs = retrieve_wikipedia_docs(industry.strip(), k=5)
     urls = extract_urls(docs)
 
@@ -540,9 +539,17 @@ if submitted:
         st.info("Examples: “Fast fashion”, “Semiconductor industry”, “EV battery market”.")
         st.stop()
 
-    # =========================
-    # Step 2 — Top Wikipedia sources
-    # =========================
+    # Cache for later (so report doesn't reset)
+    st.session_state.industry_value = industry.strip()
+    st.session_state.docs_value = docs
+
+# =========================
+# Step 2 — Top Wikipedia sources
+# =========================
+if "industry_value" in st.session_state and "docs_value" in st.session_state:
+    industry = st.session_state.industry_value
+    docs = st.session_state.docs_value
+
     st.markdown("<h3 class='blue-accent'>Step 2 — Top Wikipedia sources</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>These are the five most relevant pages used to generate the report.</div>",
@@ -563,9 +570,13 @@ if submitted:
             if rank >= 5:
                 break
 
-    # =========================
-    # Step 3 — Industry report
-    # =========================
+# =========================
+# Step 3 — Industry report
+# =========================
+if "industry_value" in st.session_state and "docs_value" in st.session_state:
+    industry = st.session_state.industry_value
+    docs = st.session_state.docs_value
+
     st.markdown("<h3 class='blue-accent'>Step 3 — Industry report (under 500 words)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Business-analyst style briefing with traceable citations in the form [Source #].</div>",
@@ -616,14 +627,18 @@ if submitted:
         f"SOURCES:\n{sources_text}"
     )
 
-    with st.spinner("Generating industry briefing…"):
-        response = llm.invoke(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-        )
-        report = cap_500_words(response.content)
+    if "report_value" not in st.session_state:
+        with st.spinner("Generating industry briefing…"):
+            response = llm.invoke(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+            )
+            report = cap_500_words(response.content)
+            st.session_state.report_value = report
+
+    report = st.session_state.report_value
 
     report = re.sub(r"(?m)^#+\s*", "", report)
     report = re.sub(r"(?m)^\s*\d+\)\s*(.+)$", r"<div class=\"section-title\">\1</div>", report).strip()
@@ -840,13 +855,11 @@ if submitted:
         unsafe_allow_html=True
     )
 
-    # --- Moved controls from sidebar to here ---
-    k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
-
     cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
 
     with st.form("cluster_controls"):
         st.markdown("**Cluster Controls**")
+        k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
         cluster_fields = st.multiselect(
             "Fields used to cluster",
             options=cluster_df.columns.tolist(),
@@ -856,23 +869,22 @@ if submitted:
         cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
         apply_cluster = st.form_submit_button("Apply clustering")
 
-    if "cluster_fields_value" not in st.session_state:
-        st.session_state.cluster_fields_value = cluster_fields
-    if "cluster_x_value" not in st.session_state:
-        st.session_state.cluster_x_value = cluster_x
-    if "cluster_y_value" not in st.session_state:
-        st.session_state.cluster_y_value = cluster_y
-
     if apply_cluster:
+        st.session_state.k_clusters_value = k_clusters
         st.session_state.cluster_fields_value = cluster_fields
         st.session_state.cluster_x_value = cluster_x
         st.session_state.cluster_y_value = cluster_y
 
-    if len(st.session_state.cluster_fields_value) >= 2:
-        scaled = (cluster_df[st.session_state.cluster_fields_value] - cluster_df[st.session_state.cluster_fields_value].mean()) / (
-            cluster_df[st.session_state.cluster_fields_value].std(ddof=0) + 1e-9
+    k = st.session_state.get("k_clusters_value", k_clusters)
+    fields = st.session_state.get("cluster_fields_value", cluster_fields)
+    cx = st.session_state.get("cluster_x_value", cluster_x)
+    cy = st.session_state.get("cluster_y_value", cluster_y)
+
+    if len(fields) >= 2:
+        scaled = (cluster_df[fields] - cluster_df[fields].mean()) / (
+            cluster_df[fields].std(ddof=0) + 1e-9
         )
-        km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+        km = KMeans(n_clusters=k, n_init=10, random_state=42)
         clusters = km.fit_predict(scaled)
         plot_df = synthetic_df.copy()
         plot_df["cluster"] = clusters.astype(str)
@@ -881,15 +893,15 @@ if submitted:
             alt.Chart(plot_df)
             .mark_circle(size=70, opacity=0.8)
             .encode(
-                x=alt.X(f"{st.session_state.cluster_x_value}:Q", title=st.session_state.cluster_x_value),
-                y=alt.Y(f"{st.session_state.cluster_y_value}:Q", title=st.session_state.cluster_y_value),
+                x=alt.X(f"{cx}:Q", title=cx),
+                y=alt.Y(f"{cy}:Q", title=cy),
                 color=alt.Color("cluster:N", title="Cluster"),
-                tooltip=["company", st.session_state.cluster_x_value, st.session_state.cluster_y_value, "cluster"],
+                tooltip=["company", cx, cy, "cluster"],
             ),
             use_container_width=True
         )
 
-        cluster_summary = plot_df.groupby("cluster")[st.session_state.cluster_fields_value].mean().reset_index()
+        cluster_summary = plot_df.groupby("cluster")[fields].mean().reset_index()
         st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
         st.write("Average values per cluster to help compare strategic profiles.")
         st.dataframe(cluster_summary)
