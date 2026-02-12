@@ -87,8 +87,8 @@ with st.sidebar.form("controls_form"):
 
     style_options = {
         "Crisp & Deterministic": {"detail": "Concise", "temp": 0.2},
-        "Balanced Analyst": {"detail": "Balanced", "temp": 0.3},
-        "Deep Dive": {"detail": "Deep", "temp": 0.4},
+        "Balanced Analysis": {"detail": "Balanced", "temp": 0.5},
+        "Deep Dive": {"detail": "Deep", "temp": 1.0},
     }
 
     selected_style = st.selectbox("Report style", list(style_options.keys()), index=1)
