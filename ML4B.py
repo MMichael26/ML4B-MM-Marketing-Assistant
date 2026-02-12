@@ -114,6 +114,10 @@ if apply_controls:
     st.session_state.temperature_value = style_options[selected_style]["temp"]
     if "report_value" in st.session_state:
         del st.session_state.report_value
+# Ensure report refreshes when preferences change
+if apply_controls and "report_value" in st.session_state:
+    del st.session_state.report_value
+
 
 # =========================
 # Helper functions
@@ -574,6 +578,12 @@ if submitted:
 
     st.session_state.industry_value = industry.strip()
     st.session_state.docs_value = docs
+# Ensure report refreshes when industry changes
+if "last_industry_value" not in st.session_state or st.session_state.last_industry_value != industry.strip():
+    st.session_state.last_industry_value = industry.strip()
+    if "report_value" in st.session_state:
+        del st.session_state.report_value
+
 
 # =========================
 # Step 2 — Top Wikipedia sources
