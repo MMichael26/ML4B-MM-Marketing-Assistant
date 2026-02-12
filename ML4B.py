@@ -658,7 +658,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         "Write a <500 word business analyst briefing using ONLY the sources below.\n\n"
         "Required structure (use these headings):<ol>"
         "<li> Executive snapshot (2–3 sentences)/li>"
-        "<li> Scope and definition/li>
+        "<li> Scope and definition</li>"
         "<li> Value chain / key segments/li>"
         "<li> Demand drivers and primary use-cases/li>"
         "<li> Challenges / constraints / notable developments (only if stated)/li>"
