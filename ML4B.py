@@ -64,7 +64,7 @@ llm_options = ["Select a model...", "gpt-4o-mini"]
 selected_llm = st.sidebar.selectbox("LLM", llm_options, index=0)
 
 if selected_llm == "Select a model...":
-    st.warning("Please select an LLM (gpt-4o-mini) from the dropdown to continue.")
+    st.warning("Please select an LLM from the dropdown to continue.")
     st.stop()
 
 show_key = st.sidebar.checkbox("Show API key", value=False)
