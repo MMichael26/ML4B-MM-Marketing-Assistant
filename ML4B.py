@@ -9,12 +9,15 @@ from sklearn.cluster import KMeans
 from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
 
-#Page config
 
+# =========================
+# Page config
+# =========================
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
-#Blue accent styling (light + consistent)
-
+# =========================
+# Blue accent styling (light + consistent)
+# =========================
 st.markdown(
     """
     <style>
@@ -51,9 +54,9 @@ st.markdown(
 st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
-
-#Q0 LLM Dropdwon (included a Sidebar for both LLM + API Key)
-
+# =========================
+# Sidebar: LLM + API Key (Q0)
+# =========================
 st.sidebar.header("Model & API Key")
 st.sidebar.write("Select the model and enter your OpenAI API key to run the report.")
 
@@ -70,17 +73,15 @@ user_key = st.sidebar.text_input(
     type="default" if show_key else "password"
 )
 
-#Gate UI until API key is entered for extra security and professional look
+# ---- Gate UI until API key is entered ----
 api_key = (user_key or "").strip()
 if not api_key:
     st.info("Please enter your OpenAI API key to continue.")
     st.stop()
 
-
-#Sidebar: Report preferencessection is a control panel for the generated industry report in Step 3. 
-#It lets the user set the report’s focus (e.g., M&A screening vs. market overview) and the writing style (concise, balanced, or deep), which also adjusts the LLM temperature. 
-#These settings shape the tone and emphasis of the final briefing without changing the underlying data or visuals.
-
+# =========================
+# Sidebar: Report preferences (combined style)
+# =========================
 with st.sidebar.form("controls_form"):
     st.markdown("**Report preferences**")
 
@@ -118,9 +119,9 @@ if apply_controls and "report_value" in st.session_state:
     del st.session_state.report_value
 
 
-
+# =========================
 # Helper functions
-
+# =========================
 def industry_is_valid(industry: str) -> bool:
     return bool(industry and industry.strip())
 
@@ -176,9 +177,9 @@ def cap_500_words(text: str) -> str:
     return " ".join(words[:500]).rstrip() + "…"
 
 
-
+# =========================
 # Synthetic Data Schemas
-
+# =========================
 def rand_date(start_year=2020, end_year=2025):
     start_date = pd.Timestamp(f"{start_year}-01-01")
     end_date = pd.Timestamp(f"{end_year}-12-31")
@@ -517,9 +518,9 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
 
 
 
-
+# =========================
 # API key handling
-
+# =========================
 api_key = (user_key or "").strip()
 if not api_key:
     st.markdown(
@@ -542,9 +543,9 @@ if not api_key:
 os.environ["OPENAI_API_KEY"] = api_key
 
 
-
+# =========================
 # UI — Step 1
-
+# =========================
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
     "<div class='subtle'>Tip: be specific (e.g., “Fast fashion”, “Semiconductor industry”, “EV batteries”).</div>",
@@ -584,8 +585,9 @@ if "last_industry_value" not in st.session_state or st.session_state.last_indust
         del st.session_state.report_value
 
 
+# =========================
 # Step 2 — Top Wikipedia sources
-
+# =========================
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
     industry = st.session_state.industry_value
     docs = st.session_state.docs_value
@@ -610,9 +612,9 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             if rank >= 5:
                 break
 
-
+# =========================
 # Step 3 — Industry report
-
+# =========================
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
     industry = st.session_state.industry_value
     docs = st.session_state.docs_value
@@ -701,9 +703,9 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         unsafe_allow_html=True
     )
 
-    
+    # =========================
     # Synthetic Dataset & M&A-Oriented Visuals
-    
+    # =========================
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
@@ -731,7 +733,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("company:N", sort="-x", title="Company"),
             tooltip=["company", "market_share_pct"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Growth vs EBITDA Margin
@@ -746,7 +748,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "segment", "revenue_growth_pct", "ebitda_margin_pct"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Revenue Distribution
@@ -760,7 +762,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("count():Q", title="Count"),
             tooltip=["count()"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Revenue Trend (Monthly)
@@ -775,7 +777,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("revenue_usd_m:Q", title="Total Revenue (USD, millions)"),
             tooltip=["month", "revenue_usd_m"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Capex vs Margin
@@ -790,7 +792,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "capex_intensity_pct", "ebitda_margin_pct"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Risk vs Supply Concentration
@@ -805,7 +807,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "supply_concentration", "risk_score"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Segment Attractiveness
@@ -825,7 +827,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "attractiveness", "avg_growth", "avg_margin", "avg_risk"]
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Top 5 Acquisition Targets
@@ -854,7 +856,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             y=alt.Y("segment:N", sort="-x", title="Segment"),
             tooltip=["segment", "profit_pool"]
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Margin vs Leverage
@@ -869,7 +871,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             color=alt.Color("segment:N", title="Segment"),
             tooltip=["company", "debt_to_equity", "ebitda_margin_pct"],
         ),
-        width="stretch"
+        width=700
     )
 
     # ---- Top 5 Risks
@@ -891,9 +893,9 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
     )
 
-    
+    # =========================
     # Clustering (K-means)
-    
+    # =========================
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
@@ -943,7 +945,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
                 color=alt.Color("cluster:N", title="Cluster"),
                 tooltip=["company", cx, cy, "cluster"],
             ),
-            width="stretch"
+            width=700
         )
 
         cluster_summary = plot_df.groupby("cluster")[fields].mean().reset_index()
@@ -952,3 +954,4 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         st.dataframe(cluster_summary)
     else:
         st.warning("Select at least two numeric fields for clustering.")
+
