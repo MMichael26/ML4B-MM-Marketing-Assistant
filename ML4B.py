@@ -889,6 +889,68 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     st.write(
         f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
     )
+        # =========================
+    # Clustering (K-means)
+    # =========================
+    st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
+        unsafe_allow_html=True
+    )
+
+    cluster_df = synthetic_df.select_dtypes(include=["number"]).copy()
+
+    with st.form("cluster_controls"):
+        st.markdown("**Cluster Controls**")
+        k_clusters = st.slider("K-means clusters", min_value=2, max_value=6, value=3, step=1)
+        cluster_fields = st.multiselect(
+            "Fields used to cluster",
+            options=cluster_df.columns.tolist(),
+            default=["revenue_growth_pct", "ebitda_margin_pct", "capex_intensity_pct", "risk_score"]
+        )
+        cluster_x = st.selectbox("X-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("revenue_growth_pct"))
+        cluster_y = st.selectbox("Y-axis", options=cluster_df.columns.tolist(), index=cluster_df.columns.get_loc("ebitda_margin_pct"))
+        apply_cluster = st.form_submit_button("Apply clustering")
+
+    if apply_cluster:
+        st.session_state.k_clusters_value = k_clusters
+        st.session_state.cluster_fields_value = cluster_fields
+        st.session_state.cluster_x_value = cluster_x
+        st.session_state.cluster_y_value = cluster_y
+
+    k = st.session_state.get("k_clusters_value", k_clusters)
+    fields = st.session_state.get("cluster_fields_value", cluster_fields)
+    cx = st.session_state.get("cluster_x_value", cluster_x)
+    cy = st.session_state.get("cluster_y_value", cluster_y)
+
+    if len(fields) >= 2:
+        scaled = (cluster_df[fields] - cluster_df[fields].mean()) / (
+            cluster_df[fields].std(ddof=0) + 1e-9
+        )
+        km = KMeans(n_clusters=k, n_init=10, random_state=42)
+        clusters = km.fit_predict(scaled)
+        plot_df = synthetic_df.copy()
+        plot_df["cluster"] = clusters.astype(str)
+
+        st.altair_chart(
+            alt.Chart(plot_df)
+            .mark_circle(size=70, opacity=0.8)
+            .encode(
+                x=alt.X(f"{cx}:Q", title=cx),
+                y=alt.Y(f"{cy}:Q", title=cy),
+                color=alt.Color("cluster:N", title="Cluster"),
+                tooltip=["company", cx, cy, "cluster"],
+            ),
+            use_container_width=True
+        )
+
+        cluster_summary = plot_df.groupby("cluster")[fields].mean().reset_index()
+        st.markdown("<div class='section-title'>Cluster Insights</div>", unsafe_allow_html=True)
+        st.write("Average values per cluster to help compare strategic profiles.")
+        st.dataframe(cluster_summary)
+    else:
+        st.warning("Select at least two numeric fields for clustering.")
+
     st.write(
         f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
     )
