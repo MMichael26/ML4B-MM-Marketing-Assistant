@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
-# Blue accent styling (light + consistent)
+# App Styling
 st.markdown(
     """
     <style>
@@ -77,8 +77,8 @@ if not api_key:
     st.info("Please enter your OpenAI API key to continue.")
     st.stop()
 
-# Sidebar: Report preferences (combined style)
-# These controls exist so the analyst can tune the briefing without changing the code.
+# Sidebar: Report preferences
+# Controls have been included so the analyst can tune the briefing without changing the code.
 # Report style sets the temperature for hte report, which affects how tight or exploratory the industry report is produced.
 # A way to test this is by looking at the increase word count and the use of source information in the report. 
 # Report focus shifts the emphasis (M&A fit, market overview, competition, or risk) so the analyst can decide what perspective they would like to view the market research.
@@ -178,6 +178,8 @@ def cap_500_words(text: str) -> str:
 
 
 # Synthetic Data Schemas
+# This section has been created to provide more information for the synthetic data which enables creation of the mock visualtisations based on the industry the user provides.
+# These demonstrate how a completed version of the app would work if real data was provided. 
 
 def rand_date(start_year=2020, end_year=2025):
     start_date = pd.Timestamp(f"{start_year}-01-01")
@@ -542,7 +544,8 @@ os.environ["OPENAI_API_KEY"] = api_key
 
 # UI — Step 1
 # This is the single user input that drives the entire workflow.
-# We keep it simple so the analyst can iterate quickly on industry wording. 
+# The function is kept simple so the analyst can iterate quickly on industry wording. 
+# (If no results were found for the analysts query, the app would ask for further input which will be used for the rest of the app)
 
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
@@ -611,7 +614,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
                 break
 
 # Step 3 — Industry report
-# We cache the report in session state to avoid re-calling the LLM on every rerun.
+# The report is cached in session state to avoid re-calling the LLM on every rerun.
 # This keeps the UI responsive when the analyst tweaks other controls. This function allows for better user experience.
 
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
@@ -893,8 +896,9 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     )
         
 # Clustering (K-means)
-# Clustering groups synthetic entities by similar numeric profiles to surface patterns quickly.
-# It’s a fast way for the analyst to spot cohorts with similar risk/return characteristics and the visuals can be used to present to senior stakeholders.
+# Grouping the synthetic entities by similar numeric profiles in order to analyse any potential patterns.
+# This makes it more efficient for the analyst to spot cohorts with similar risk.
+#By returning characteristics the visuals can be used to present to senior stakeholders and help with the aproach to acquuiring companies.
     
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     st.markdown(
