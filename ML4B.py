@@ -10,14 +10,11 @@ from langchain_community.retrievers import WikipediaRetriever
 from langchain_openai import ChatOpenAI
 
 
-# =========================
 # Page config
-# =========================
+
 st.set_page_config(page_title="Market Research Assistant", layout="wide")
 
-# =========================
 # Blue accent styling (light + consistent)
-# =========================
 st.markdown(
     """
     <style>
@@ -54,9 +51,10 @@ st.markdown(
 st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
-# =========================
+
 # Sidebar: LLM + API Key (Q0)
-# =========================
+#The process will stop early if no API key is provided so the app never runs without authenticated access.
+
 st.sidebar.header("Model & API Key")
 st.sidebar.write("Select the model and enter your OpenAI API key to run the report.")
 
@@ -73,15 +71,18 @@ user_key = st.sidebar.text_input(
     type="default" if show_key else "password"
 )
 
-# ---- Gate UI until API key is entered ----
+# Gate UI until API key is entered
 api_key = (user_key or "").strip()
 if not api_key:
     st.info("Please enter your OpenAI API key to continue.")
     st.stop()
 
-# =========================
 # Sidebar: Report preferences (combined style)
-# =========================
+# These controls exist so the analyst can tune the briefing without changing the code.
+# Report style sets the temperature for hte report, which affects how tight or exploratory the industry report is produced.
+# A way to test this is by looking at the increase word count and the use of source information in the report. 
+# Report focus shifts the emphasis (M&A fit, market overview, competition, or risk) so the analyst can decide what perspective they would like to view the market research.
+
 with st.sidebar.form("controls_form"):
     st.markdown("**Report preferences**")
 
@@ -114,14 +115,13 @@ if apply_controls:
     st.session_state.temperature_value = style_options[selected_style]["temp"]
     if "report_value" in st.session_state:
         del st.session_state.report_value
-# Ensure report refreshes when preferences change
+# Ensures report refreshes when preferences change
 if apply_controls and "report_value" in st.session_state:
     del st.session_state.report_value
 
 
-# =========================
 # Helper functions
-# =========================
+
 def industry_is_valid(industry: str) -> bool:
     return bool(industry and industry.strip())
 
@@ -177,9 +177,8 @@ def cap_500_words(text: str) -> str:
     return " ".join(words[:500]).rstrip() + "…"
 
 
-# =========================
 # Synthetic Data Schemas
-# =========================
+
 def rand_date(start_year=2020, end_year=2025):
     start_date = pd.Timestamp(f"{start_year}-01-01")
     end_date = pd.Timestamp(f"{end_year}-12-31")
@@ -475,7 +474,7 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
     else:
         df["company"] = df["company"].astype(str)
 
-    # Ensure enough unique companies for meaningful ranking
+# Ensures there are enough unique companies for meaningful ranking otherwise I found the visuals carried no real value or meaning. 
     if df["company"].nunique() < 12:
         df["company"] = make_generic_company_names(industry, len(df))
 
@@ -517,10 +516,8 @@ def enrich_for_ma(df: pd.DataFrame, industry: str) -> pd.DataFrame:
     return df
 
 
-
-# =========================
 # API key handling
-# =========================
+
 api_key = (user_key or "").strip()
 if not api_key:
     st.markdown(
@@ -543,9 +540,10 @@ if not api_key:
 os.environ["OPENAI_API_KEY"] = api_key
 
 
-# =========================
 # UI — Step 1
-# =========================
+# This is the single user input that drives the entire workflow.
+# We keep it simple so the analyst can iterate quickly on industry wording. 
+
 st.markdown("<h3 class='blue-accent'>Step 1 — Choose an industry</h3>", unsafe_allow_html=True)
 st.markdown(
     "<div class='subtle'>Tip: be specific (e.g., “Fast fashion”, “Semiconductor industry”, “EV batteries”).</div>",
@@ -585,9 +583,9 @@ if "last_industry_value" not in st.session_state or st.session_state.last_indust
         del st.session_state.report_value
 
 
-# =========================
 # Step 2 — Top Wikipedia sources
-# =========================
+# Step 2 shows exactly which sources were used, so the analyst can verify provenance.
+
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
     industry = st.session_state.industry_value
     docs = st.session_state.docs_value
@@ -612,9 +610,10 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             if rank >= 5:
                 break
 
-# =========================
 # Step 3 — Industry report
-# =========================
+# We cache the report in session state to avoid re-calling the LLM on every rerun.
+# This keeps the UI responsive when the analyst tweaks other controls. This function allows for better user experience.
+
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
     industry = st.session_state.industry_value
     docs = st.session_state.docs_value
@@ -703,9 +702,12 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         unsafe_allow_html=True
     )
 
-    # =========================
-    # Synthetic Dataset & M&A-Oriented Visuals
-    # =========================
+  
+# Synthetic Dataset & M&A-Oriented Visuals
+# Wikipedia sources are text and rarely provide clean, structured numbers.
+# To make charts that are still useful for business analysis,a realistic synthetic dataset was generated.
+# This gives the analyst directional signals on market share, growth, margin, and risk when real and accurate data is unavailable.
+   
     st.markdown("<h3 class='blue-accent'>Synthetic Dataset & M&A-Oriented Visuals</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>A synthetic dataset is generated and enriched with acquisition-style metrics for analyst screening.</div>",
@@ -715,7 +717,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     synthetic_df = generate_synthetic_df(industry.strip(), rows=240)
     synthetic_df = enrich_for_ma(synthetic_df, industry.strip())
 
-    # ---- Market Share (Top Companies)
+#Market Share (Top Companies)
     st.markdown("<div class='section-title'>Market Share — Top Companies</div>", unsafe_allow_html=True)
     st.write("Ranks companies by estimated market share within the synthetic sample to highlight potential leaders.")
     share_df = (
@@ -736,7 +738,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Growth vs EBITDA Margin
+#Growth vs EBITDA Margin
     st.markdown("<div class='section-title'>Growth vs EBITDA Margin</div>", unsafe_allow_html=True)
     st.write("Shows the trade-off between growth and profitability across synthetic entities.")
     st.altair_chart(
@@ -751,7 +753,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Revenue Distribution
+#Revenue Distribution
     st.markdown("<div class='section-title'>Revenue Distribution</div>", unsafe_allow_html=True)
     st.write("Shows how revenue is distributed across entities, highlighting size skew.")
     st.altair_chart(
@@ -765,7 +767,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Revenue Trend (Monthly)
+#Revenue Trend (Monthly)
     st.markdown("<div class='section-title'>Revenue Trend Over Time</div>", unsafe_allow_html=True)
     st.write("Tracks aggregate revenue trends over time, based on synthetic time signals.")
     time_df = synthetic_df.groupby("month")["revenue_usd_m"].sum().reset_index()
@@ -780,7 +782,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Capex vs Margin
+#Capex vs Margin
     st.markdown("<div class='section-title'>Capex Intensity vs Margin</div>", unsafe_allow_html=True)
     st.write("Identifies which players combine strong margins with capital efficiency.")
     st.altair_chart(
@@ -795,7 +797,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Risk vs Supply Concentration
+#Risk vs Supply Concentration
     st.markdown("<div class='section-title'>Risk vs Supply Concentration</div>", unsafe_allow_html=True)
     st.write("Highlights exposure to supply-chain concentration risk against composite risk scores.")
     st.altair_chart(
@@ -810,7 +812,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Segment Attractiveness
+#Segment Attractiveness
     st.markdown("<div class='section-title'>Segment Attractiveness</div>", unsafe_allow_html=True)
     st.write("Compares segments by a composite of growth, margin, and low risk.")
     seg_df = synthetic_df.groupby("segment").agg(
@@ -830,7 +832,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Top 5 Acquisition Targets
+#Top 5 Acquisition Targets
     st.markdown("<div class='section-title'>Top 5 Acquisition Targets</div>", unsafe_allow_html=True)
     st.write("Ranks targets using a composite of growth, margin, and lower risk.")
     target_df = synthetic_df.copy()
@@ -842,7 +844,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     top_targets = target_df.sort_values("target_score", ascending=False).head(5)
     st.dataframe(top_targets[["company", "segment", "region", "revenue_growth_pct", "ebitda_margin_pct", "risk_score", "target_score"]])
 
-    # ---- Profit Pool by Segment
+#Profit Pool by Segment
     st.markdown("<div class='section-title'>Profit Pool by Segment</div>", unsafe_allow_html=True)
     st.write("Estimates segment profit pools using revenue × margin as a proxy.")
     profit_df = synthetic_df.groupby("segment").apply(
@@ -859,7 +861,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Margin vs Leverage
+#Margin vs Leverage
     st.markdown("<div class='section-title'>Margin vs Leverage</div>", unsafe_allow_html=True)
     st.write("Shows whether higher leverage correlates with margin performance.")
     st.altair_chart(
@@ -874,13 +876,13 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         use_container_width=True
     )
 
-    # ---- Top 5 Risks
+#Top 5 Risks
     st.markdown("<div class='section-title'>Top 5 Risks</div>", unsafe_allow_html=True)
     st.write("Lists the highest-risk entities to flag for diligence.")
     top_risks = synthetic_df.sort_values("risk_score", ascending=False).head(5)
     st.dataframe(top_risks[["company", "segment", "region", "risk_score", "supply_concentration"]])
 
-    # ---- Profit Strategy Summary
+#Profit Strategy Summary
     st.markdown("<div class='section-title'>Profit Strategy Summary</div>", unsafe_allow_html=True)
     st.write("Synthetic signals suggest where value is concentrated and which segments to prioritize.")
     st.write(
@@ -889,9 +891,11 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
     st.write(
         f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
     )
-        # =========================
-    # Clustering (K-means)
-    # =========================
+        
+# Clustering (K-means)
+# Clustering groups synthetic entities by similar numeric profiles to surface patterns quickly.
+# It’s a fast way for the analyst to spot cohorts with similar risk/return characteristics and the visuals can be used to present to senior stakeholders.
+    
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtle'>Uses the same synthetic dataset to group entities by numeric characteristics.</div>",
@@ -953,5 +957,8 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
 
     st.write(
         f"- Most risky segment: **{seg_df.sort_values('avg_risk', ascending=False).iloc[0]['segment']}**"
+    )
+    st.write(
+    f"- Most attractive segment: **{seg_df.sort_values('attractiveness', ascending=False).iloc[0]['segment']}**"
     )
 
