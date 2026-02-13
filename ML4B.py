@@ -52,7 +52,7 @@ st.title("Market Research Assistant")
 st.caption("Generate a concise, Wikipedia-grounded industry briefing in three steps.")
 
 
-# Sidebar: LLM + API Key (Q0)
+# Q0 Sidebar: LLM + API Key 
 #The process will stop early if no API key is provided so the app never runs without authenticated access.
 
 st.sidebar.header("Model & API Key")
@@ -542,7 +542,7 @@ if not api_key:
 os.environ["OPENAI_API_KEY"] = api_key
 
 
-# UI — Step 1
+# Q1 User Input
 # This is the single user input that drives the entire workflow.
 # The function is kept simple so the analyst can iterate quickly on industry wording. 
 # (If no results were found for the analysts query, the app would ask for further input which will be used for the rest of the app)
@@ -586,7 +586,7 @@ if "last_industry_value" not in st.session_state or st.session_state.last_indust
         del st.session_state.report_value
 
 
-# Step 2 — Top Wikipedia sources
+# Q2— Top Wikipedia sources
 # Step 2 shows exactly which sources were used, so the analyst can verify provenance.
 
 if "industry_value" in st.session_state and "docs_value" in st.session_state:
@@ -613,7 +613,7 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
             if rank >= 5:
                 break
 
-# Step 3 — Industry report
+# Q3— Industry report
 # The report is cached in session state to avoid re-calling the LLM on every rerun.
 # This keeps the UI responsive when the analyst tweaks other controls. This function allows for better user experience.
 
@@ -895,9 +895,9 @@ if "industry_value" in st.session_state and "docs_value" in st.session_state:
         f"- Largest profit pool: **{profit_df.sort_values('profit_pool', ascending=False).iloc[0]['segment']}**"
     )
         
-# Clustering (K-means)
-# Grouping the synthetic entities by similar numeric profiles in order to analyse any potential patterns.
-# This makes it more efficient for the analyst to spot cohorts with similar risk.
+#Clustering (K-means)
+#Grouping the synthetic entities by similar numeric profiles in order to analyse any potential patterns.
+#This makes it more efficient for the analyst to spot cohorts with similar risk.
 #By returning characteristics the visuals can be used to present to senior stakeholders and help with the aproach to acquuiring companies.
     
     st.markdown("<h3 class='blue-accent'>Clustering (K-means)</h3>", unsafe_allow_html=True)
